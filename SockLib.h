@@ -8,6 +8,8 @@
 #ifndef __SOCKLIB_H__
 #define __SOCKLIB_H__
 
+#define SOCKLIB_VER			"1.0"
+
 // export to LUA?
 #ifndef SOCKLIB_TO_LUA
 #define SOCKLIB_TO_LUA		1
@@ -30,7 +32,7 @@
 #endif
 
 // use a namespace(cpp effected only)?
-// you can change the name of namespace
+// you can change this name
 #if 1
 #define SOCKLIB_NAMESPACE_BEGIN 	namespace socklib {
 #define SOCKLIB_NAMESPACE_END 		}
@@ -184,162 +186,6 @@ class SockBuf;
 //typedef std::shared_ptr<SockRef> SockPtr;
 typedef SockRef* SockPtr;
 
-#if SOCKLIB_ALG
-///////////////////////////////////////////////////////////////////////////////
-// RC4
-//
-// RC4 codes write by someone I don't know.
-//
-class RC4
-{
-public:
-	RC4() : _i(0), _j(0) {}
-	RC4(const u8_t* key, u32_t size) : _i(0), _j(0) {
-		setKey(key, size);
-	}
-
-	void setKey(const u8_t* key, u32_t size) {
-		u32_t t;
-		// initialize state
-		for (t = 0; t < 256; t++)
-			_s[t] = t;
-
-		_j = 0;
-		for (t = 0; t < 256; t++) {
-			_j = (_j + _s[t] + key[t % size]) & 0xff;
-			rc4_swap(_s[t], _s[_j]);
-		}
-
-		_i = _j = 0;
-	}
-	
-	void process(const u8_t* in, u8_t* out, u32_t size) {
-		for (u32_t k = 0; k < size; k++)
-			out[k] = process(in[k]);
-	}
-
-	u8_t process(u8_t b) {
-		_i = (_i + 1) & 0xff;
-		_j = (_j + _s[_i]) & 0xff;
-		rc4_swap(_s[_i], _s[_j]);
-		u8_t t = _s[ (_s[_i] + _s[_j]) & 0xff];
-		return t ^ b;
-	}
-
-	static void build(const u8_t* key, u32_t keySize,
-		const u8_t* inDat, u8_t* outDat, u32_t datSize) {
-		RC4 rc4(key, keySize);
-		rc4.process(inDat, outDat, datSize);
-	}
-
-	static inline void rc4_swap(u8_t& a, u8_t& b) {
-		u8_t t = a; a = b; b = t;
-	}
-	
-private:
-	u8_t _i, _j;
-	u8_t _s[256];
-	
-#if SOCKLIB_TO_LUA
-public:
-	static int mylua_setKey(lua_State* L);
-	static int mylua_process(lua_State* L);
-	static int mylua_gc(lua_State* L);
-	static int mylua_toString(lua_State* L);
-#endif // SOCKLIB_TO_LUA
-};
-
-static inline void RC4_build(const void* key, u32_t keySize,
-		const void* inDat, void* outDat, u32_t datSize)
-{
-	RC4::build((const u8_t*)key, keySize, (const u8_t*)inDat, (u8_t*)outDat, datSize);
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// class CRC32
-//
-u32_t CRC32_build(const void* data, u32_t len, u32_t crc = 0);
-
-///////////////////////////////////////////////////////////////////////////////
-// class MD5
-//
-class MD5
-{
-public:
-	static void build(u8_t hash[16], const void* data, u32_t len);
-
-	void init();
-	void update(const u8_t* data, u32_t len);
-	void final(u8_t digest[16]);
-
-private:	
-	u32_t	_state[4];
-	u32_t	_count[2];
-	u8_t	_buffer[64];
-	
-#if SOCKLIB_TO_LUA
-public:
-	static int mylua_init(lua_State* L);
-	static int mylua_update(lua_State* L);
-	static int mylua_final(lua_State* L);
-	static int mylua_gc(lua_State* L);
-	static int mylua_toString(lua_State* L);
-#endif // SOCKLIB_TO_LUA
-};
-
-static inline void MD5_build(u8_t hash[16], const void* data, u32_t len)
-{
-	MD5::build(hash, data, len);
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// class SHA1
-//
-class SHA1
-{
-public:
-	static void build(u8_t hash[20], const void* data, u32_t len);
-
-	void init();
-	void update(const u8_t* data, u32_t len);
-	void final(u8_t digest[20]);
-	
-private:
-	u32_t	_state[5];
-	u32_t	_count[2];
-	u8_t	_buffer[64];
-	
-#if SOCKLIB_TO_LUA
-public:
-	static int mylua_init(lua_State* L);
-	static int mylua_update(lua_State* L);
-	static int mylua_final(lua_State* L);
-	static int mylua_gc(lua_State* L);
-	static int mylua_toString(lua_State* L);
-#endif // SOCKLIB_TO_LUA
-};
-
-static inline void SHA1_build(u8_t hash[20], const void* data, u32_t len)
-{
-	SHA1::build(hash, data, len);
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// class Base64
-//
-class Base64
-{
-};
-
-///////////////////////////////////////////////////////////////////////////////
-// class Util
-//
-class Util
-{
-};
-
-#endif // SOCKLIB_ALG
-
 ///////////////////////////////////////////////////////////////////////////////
 // class SockLib
 //
@@ -429,16 +275,6 @@ public:
 	static int mylua_buf(lua_State* L);
 	
 	static int mylua_poll(lua_State* L);
-	
-	#if SOCKLIB_ALG
-	static int mylua_u32op(lua_State* L);
-	static int mylua_crc32(lua_State* L);
-	static int mylua_rc4(lua_State* L);
-	static int mylua_md5(lua_State* L);
-	static int mylua_sha1(lua_State* L);
-	static int mylua_b64enc(lua_State* L);
-	static int mylua_b64dec(lua_State* L);
-	#endif // SOCKLIB_ALG
 
 	static lua_State* luaState() { return _luaState; }
 	
@@ -982,6 +818,196 @@ public:
 	static int mylua_sub(lua_State* L);
 #endif // SOCKLIB_TO_LUA
 };
+
+
+#if SOCKLIB_ALG
+///////////////////////////////////////////////////////////////////////////////
+// RC4
+//
+// RC4 codes write by someone I don't know.
+//
+class RC4
+{
+public:
+	RC4() : _i(0), _j(0) {}
+	RC4(const u8_t* key, u32_t size) : _i(0), _j(0) {
+		setKey(key, size);
+	}
+
+	void setKey(const u8_t* key, u32_t size) {
+		u32_t t;
+		// initialize state
+		for (t = 0; t < 256; t++)
+			_s[t] = t;
+
+		_j = 0;
+		for (t = 0; t < 256; t++) {
+			_j = (_j + _s[t] + key[t % size]) & 0xff;
+			rc4_swap(_s[t], _s[_j]);
+		}
+
+		_i = _j = 0;
+	}
+	
+	void process(const u8_t* in, u8_t* out, u32_t size) {
+		for (u32_t k = 0; k < size; k++)
+			out[k] = process(in[k]);
+	}
+
+	u8_t process(u8_t b) {
+		_i = (_i + 1) & 0xff;
+		_j = (_j + _s[_i]) & 0xff;
+		rc4_swap(_s[_i], _s[_j]);
+		u8_t t = _s[ (_s[_i] + _s[_j]) & 0xff];
+		return t ^ b;
+	}
+
+	static void build(const u8_t* key, u32_t keySize,
+		const u8_t* inDat, u8_t* outDat, u32_t datSize) {
+		RC4 rc4(key, keySize);
+		rc4.process(inDat, outDat, datSize);
+	}
+
+	static inline void rc4_swap(u8_t& a, u8_t& b) {
+		u8_t t = a; a = b; b = t;
+	}
+	
+private:
+	u8_t _i, _j;
+	u8_t _s[256];
+	
+#if SOCKLIB_TO_LUA
+public:
+	static int mylua_setKey(lua_State* L);
+	static int mylua_process(lua_State* L);
+	static int mylua_gc(lua_State* L);
+	static int mylua_toString(lua_State* L);
+#endif // SOCKLIB_TO_LUA
+};
+
+static inline void RC4_build(const void* key, u32_t keySize,
+		const void* inDat, void* outDat, u32_t datSize)
+{
+	RC4::build((const u8_t*)key, keySize, (const u8_t*)inDat, (u8_t*)outDat, datSize);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// class CRC32
+//
+u32_t CRC32_build(const void* data, u32_t len, u32_t crc = 0);
+
+///////////////////////////////////////////////////////////////////////////////
+// class MD5
+//
+class MD5
+{
+public:
+	static void build(u8_t hash[16], const void* data, u32_t len);
+
+	void init();
+	void update(const u8_t* data, u32_t len);
+	void final(u8_t digest[16]);
+
+private:	
+	u32_t	_state[4];
+	u32_t	_count[2];
+	u8_t	_buffer[64];
+	
+#if SOCKLIB_TO_LUA
+public:
+	static int mylua_init(lua_State* L);
+	static int mylua_update(lua_State* L);
+	static int mylua_final(lua_State* L);
+	static int mylua_gc(lua_State* L);
+	static int mylua_toString(lua_State* L);
+#endif // SOCKLIB_TO_LUA
+};
+
+static inline void MD5_build(u8_t hash[16], const void* data, u32_t len)
+{
+	MD5::build(hash, data, len);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// class SHA1
+//
+class SHA1
+{
+public:
+	static void build(u8_t hash[20], const void* data, u32_t len);
+
+	void init();
+	void update(const u8_t* data, u32_t len);
+	void final(u8_t digest[20]);
+	
+private:
+	u32_t	_state[5];
+	u32_t	_count[2];
+	u8_t	_buffer[64];
+	
+#if SOCKLIB_TO_LUA
+public:
+	static int mylua_init(lua_State* L);
+	static int mylua_update(lua_State* L);
+	static int mylua_final(lua_State* L);
+	static int mylua_gc(lua_State* L);
+	static int mylua_toString(lua_State* L);
+#endif // SOCKLIB_TO_LUA
+};
+
+static inline void SHA1_build(u8_t hash[20], const void* data, u32_t len)
+{
+	SHA1::build(hash, data, len);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// class Base64
+//
+std::string Base64_encode(const void* buf, u32_t len);
+std::string Base64_decode(const char* sz, u32_t len = 0);
+
+///////////////////////////////////////////////////////////////////////////////
+// class Util
+//
+class Util
+{
+public:
+	static u64_t 		tick();
+	
+	static std::string	ipn2s(u32_t ip);
+	static u32_t 		ips2n(const std::string& ip);
+	
+	static std::string	urlenc(const std::string& url);
+	static std::string	urldec(const std::string& url);
+
+#if SOCKLIB_TO_LUA
+#if SOCKLIB_ALG
+	static int mylua_u32op(lua_State* L);
+	static int mylua_crc32(lua_State* L);
+	static int mylua_rc4(lua_State* L);
+	static int mylua_md5(lua_State* L);
+	static int mylua_sha1(lua_State* L);
+	static int mylua_b64enc(lua_State* L);
+	static int mylua_b64dec(lua_State* L);
+
+	static int mylua_tick(lua_State* L);
+	static int mylua_urlenc(lua_State* L);
+	static int mylua_urldec(lua_State* L);
+	static int mylua_ips2n(lua_State* L);
+	static int mylua_ipn2s(lua_State* L);
+	
+	static int mylua_htons(lua_State* L);
+	static int mylua_ntohs(lua_State* L);
+	static int mylua_htonl(lua_State* L);
+	static int mylua_ntohl(lua_State* L);
+	static int mylua_htonll(lua_State* L);
+	static int mylua_ntohll(lua_State* L);
+	
+#endif // SOCKLIB_ALG
+#endif // SOCKLIB_TO_LUA
+};
+
+#endif // SOCKLIB_ALG
 
 SOCKLIB_NAMESPACE_END
 

@@ -7,6 +7,12 @@
 
 #include "SockLib.h"
 
+#ifdef _WIN32
+#include <time.h>
+#else
+#include <sys/time.h>
+#endif
+
 SOCKLIB_NAMESPACE_BEGIN
 
 std::string SockLib::_libName = SOCKLIB_NAME;
@@ -30,6 +36,7 @@ static std::string SOCKLIB_UDP 	= SOCKLIB_NAME ".udp";
 static std::string SOCKLIB_BUF 	= SOCKLIB_NAME ".buf";
 
 #if SOCKLIB_ALG
+//static std::string SOCKLIB_UTIL = SOCKLIB_NAME ".util";
 static std::string SOCKLIB_RC4 	= SOCKLIB_NAME ".rc4";
 static std::string SOCKLIB_MD5 	= SOCKLIB_NAME ".md5";
 static std::string SOCKLIB_SHA1 = SOCKLIB_NAME ".sha1";
@@ -308,17 +315,6 @@ static const luaL_Reg SockLib_Reg[] = {
 	{ "udp", 		SockLib::mylua_udp },
 	{ "buf", 		SockLib::mylua_buf },
 	{ "poll", 		SockLib::mylua_poll },
-	
-#if SOCKLIB_ALG
-	{ "u32op", 		SockLib::mylua_u32op },
-	{ "crc32", 		SockLib::mylua_crc32 },
-	{ "rc4", 		SockLib::mylua_rc4 },
-	{ "md5", 		SockLib::mylua_md5 },
-	{ "sha1", 		SockLib::mylua_sha1 },
-	{ "b64enc", 	SockLib::mylua_b64enc },
-	{ "b64dec", 	SockLib::mylua_b64dec },
-#endif // SOCKLIB_ALG
-
 	{ NULL, NULL }
 };
 
@@ -391,6 +387,30 @@ static const luaL_Reg SockBuf_Reg[] = {
 };
 
 #if SOCKLIB_ALG
+static const luaL_Reg SockUtil_Reg[] = {
+	{ "u32op", 		Util::mylua_u32op },
+	{ "crc32", 		Util::mylua_crc32 },
+	{ "rc4", 		Util::mylua_rc4 },
+	{ "md5", 		Util::mylua_md5 },
+	{ "sha1", 		Util::mylua_sha1 },
+	{ "b64enc", 	Util::mylua_b64enc },
+	{ "b64dec", 	Util::mylua_b64dec },
+	
+	{ "tick",		Util::mylua_tick },
+	{ "urlenc",		Util::mylua_urlenc },
+	{ "urldec",		Util::mylua_urldec },
+	{ "ips2n",		Util::mylua_ips2n },
+	{ "ipn2s",		Util::mylua_ipn2s },
+	{ "htons",		Util::mylua_htons },
+	{ "ntohs",		Util::mylua_ntohs },
+	{ "htonl",		Util::mylua_htonl },
+	{ "ntohl",		Util::mylua_ntohl },
+	{ "htonll",		Util::mylua_htonll },
+	{ "ntohll",		Util::mylua_ntohll },
+
+	{ NULL, 		NULL }
+};
+
 static const luaL_Reg AlgRC4_Reg[] = {
 	{ "setKey", 	RC4::mylua_setKey },
 	{ "process", 	RC4::mylua_process },
@@ -434,10 +454,11 @@ int SockLib::mylua_regAs(lua_State* L, const char* libName)
 	SOCKLIB_BUF = std::string(libName) + ".buf";
 
 	#if SOCKLIB_ALG
+//	SOCKLIB_UTIL = std::string(libName) + ".util";
 	SOCKLIB_RC4 = std::string(libName) + ".rc4";
 	SOCKLIB_MD5 = std::string(libName) + ".md5";
 	SOCKLIB_SHA1 = std::string(libName) + ".sha1";
-	#endif
+	#endif // SOCKLIB_ALG
 
 	// create SockLib
 #if LUA_VERSION_NUM == 501
@@ -452,10 +473,25 @@ int SockLib::mylua_regAs(lua_State* L, const char* libName)
 	LuaHelper::newMetatable(L, SOCKLIB_BUF, SockBuf_Reg);
 
 #if SOCKLIB_ALG
+//	LuaHelper::newMetatable(L, SOCKLIB_UTIL, SockUtil_Reg);
 	LuaHelper::newMetatable(L, SOCKLIB_RC4, AlgRC4_Reg);
 	LuaHelper::newMetatable(L, SOCKLIB_MD5, AlgMD5_Reg);
 	LuaHelper::newMetatable(L, SOCKLIB_SHA1, AlgSHA1_Reg);
-#endif
+	
+	// socklib.util
+	lua_getglobal(L, _libName.c_str());
+	lua_newtable(L);
+	for (const luaL_Reg* p = SockUtil_Reg; p->name; p++) {
+		lua_pushcclosure(L, p->func, 0);
+		lua_setfield(L, -2, p->name);
+	}
+	lua_setfield(L, -2, "util");
+	
+	// socklib._VERSION
+	lua_pushfstring(L, "%s v%s, 2015/03/28", _libName.c_str(), SOCKLIB_VER);
+	lua_setfield(L, -2, "_VERSION");
+	
+#endif // SOCKLIB_ALG
 
 	return 1;
 }
@@ -521,277 +557,6 @@ int SockLib::mylua_poll(lua_State* L)
 	}
 	return 0;
 }
-
-#if SOCKLIB_ALG
-//----------------------------------------------------------------------------
-// u32_t opteration, @return a u32_t
-//
-// 2 args:
-// 	socklib.u32op("~", a) socklib.u32op("!", a)
-//
-// 3 args:
-// 	socklib.u32op(a, "&", b) socklib.u32op(a, "<<", b)
-//
-int SockLib::mylua_u32op(lua_State* L)
-{
-	int argc = lua_gettop(L);
-	
-	u32_t a, b, r = 0;
-	const char* s;
-	
-	if (argc == 2) {
-		s = luaL_checkstring(L, 1);
-		a = (u32_t)luaL_checkinteger(L, 2);
-		
-		if (0 == strcmp(s, "~")) {
-			r = ~a;
-		} else if (0 == strcmp(s, "!")) {
-			r = !a;
-		} else {
-			luaL_error(L, "%s.u32op(opt, num) unsupported opt=\"%s\"", SockLib::libName(), s);
-		}
-	} else if (argc == 3) {
-		a = (u32_t)luaL_checkinteger(L, 1);
-		s = luaL_checkstring(L, 2);
-		b = (u32_t)luaL_checkinteger(L, 3);
-		
-		if (0 == strcmp(s, "&")) {
-			r = a & b;
-		} else if (0 == strcmp(s, "&~") || 0 == strcmp(s, "& ~")) {
-			r = (a & (~b));
-		} else if (0 == strcmp(s, "&!") || 0 == strcmp(s, "& !")) {
-			r = (a & (!b));
-		} else if (0 == strcmp(s, "&=")) {
-			r = (a &= b);
-		} else if (0 == strcmp(s, "&=~") || 0 == strcmp(s, "&= ~")) {
-			r = (a &= (~b));
-		} else if (0 == strcmp(s, "&=!") || 0 == strcmp(s, "&= !")) {
-			r = (a &= (!b));
-		} else if (0 == strcmp(s, "|")) {
-			r = a | b;
-		} else if (0 == strcmp(s, "|~") || 0 == strcmp(s, "| ~")) {
-			r = (a | (~b));
-		} else if (0 == strcmp(s, "|!") || 0 == strcmp(s, "| !")) {
-			r = (a | (!b));
-		} else if (0 == strcmp(s, "|=")) {
-			r = (a |= b);
-		} else if (0 == strcmp(s, "|=~") || 0 == strcmp(s, "|= ~")) {
-			r = (a |= (~b));
-		} else if (0 == strcmp(s, "|=!") || 0 == strcmp(s, "|= !")) {
-			r = (a |= (!b));
-		} else if (0 == strcmp(s, "^")) {
-			r = a ^ b;
-		} else if (0 == strcmp(s, "^=")) {
-			r = (a ^= b);
-		} else if (0 == strcmp(s, "^=~") || 0 == strcmp(s, "^= ~")) {
-			r = (a ^= (~b));
-		} else if (0 == strcmp(s, "^=!") || 0 == strcmp(s, "^= !")) {
-			r = (a ^= (!b));
-		} else if (0 == strcmp(s, ">>")) {
-			r = a >> b;
-		} else if (0 == strcmp(s, "<<")) {
-			r = a << b;
-		} else if (0 == strcmp(s, "&&")) {
-			lua_pushboolean(L, a && b);
-			return 1;
-		} else if (0 == strcmp(s, "||")) {
-			lua_pushboolean(L, a || b);
-			return 1;
-		} else {
-			luaL_error(L, "%s.u32op(num1, opt, num2) unsupported opt=\"%s\"", SockLib::libName(), s);
-		}
-	} else {
-		luaL_error(L, "usage: \n%s.u32op(opt, num) or %s.u32op(num1, opt, num2) \ne.g. %s.u32op(\"~\", 123) %s.u32op(123, \"<<\", 2)",
-			SockLib::libName(), SockLib::libName(), SockLib::libName(), SockLib::libName());
-	}
-	
-	lua_pushinteger(L, r);
-	
-	return 1;
-}
-
-int SockLib::mylua_crc32(lua_State* L)
-{
-	u32_t len = 0, crc = 0, ret = 0;
-	
-	if (lua_gettop(L) >= 2)
-		len = (u32_t) luaL_checkinteger(L, 2);
-	
-	if (lua_gettop(L) >= 3)
-		crc = (u32_t) luaL_checkinteger(L, 3);
-	
-	if (lua_islightuserdata(L, 1)) {
-		void* ptr = lua_touserdata(L, 1);
-		ret = CRC32_build(ptr, len, crc);
-	} else if (lua_isstring(L, 1) /*&& !lua_isnumber(L, 2)*/) {
-		const char* str = luaL_checkstring(L, 1);
-		if (!len) len = (u32_t)lua_strlen(L, 1);
-		ret = CRC32_build(str, len, crc);
-	} else if (lua_isuserdata(L, 1)) {
-		SockBuf* buf = SockBuf::mylua_this(L, 1);
-		if (buf) {
-			if (!len || len > buf->len())
-				len = buf->len();
-			ret = CRC32_build(buf->pos(), len, crc);
-		} else {
-			luaL_error(L, "%s:crc32(<unknown data>) .", SockLib::libName());
-		}
-	} else {
-		luaL_error(L, "%s:crc32(<unknown data>) .", SockLib::libName());
-	}
-	
-	lua_pushinteger(L, ret);
-
-	return 1;
-}
-
-int SockLib::mylua_rc4(lua_State* L)
-{
-	if (lua_gettop(L) == 0) {
-		return LuaHelper::create<RC4>(L, SOCKLIB_RC4);
-	}
-	
-	u32_t len = 0;
-	
-	const char* key = luaL_checkstring(L, 1);
-	u32_t keySize = lua_strlen(L, 1);
-	
-	if (lua_gettop(L) >= 3)
-		len = (u32_t) luaL_checkinteger(L, 3);
-	
-	u8_t* outDat = 0;
-	
-	if (lua_islightuserdata(L, 2)) {
-		void* ptr = lua_touserdata(L, 2);
-		outDat = (u8_t*)malloc(len);
-		RC4_build(key, keySize, ptr, outDat, len);
-	} else if (lua_isstring(L, 2) /*&& !lua_isnumber(L, 1)*/) {
-		const char* str = luaL_checkstring(L, 2);
-		if (!len) len = (u32_t)lua_strlen(L, 2);
-		outDat = (u8_t*)malloc(len);
-		RC4_build(key, keySize, str, outDat, len);
-	} else if (lua_isuserdata(L, 2)) {
-		SockBuf* buf = SockBuf::mylua_this(L, 2);
-		if (buf) {
-			if (!len || len > buf->len())
-				len = buf->len();
-			outDat = (u8_t*)malloc(len);
-			RC4_build(key, keySize, buf->pos(), outDat, len);
-		} else {
-			luaL_error(L, "%s:rc4(<unknown data>) .", SockLib::libName());
-			return 1;
-		}
-	} else {
-		luaL_error(L, "%s:rc4(<unknown data>) .", SockLib::libName());
-		return 1;
-	}
-
-	if (outDat) {
-		SockBuf* buf = new SockBuf();
-		LuaHelper::add(buf);
-		buf->w(outDat, len);
-		free(outDat);
-		return LuaHelper::bind<SockBuf>(L, SOCKLIB_BUF, buf);
-	}
-	
-	return 0;
-}
-
-int SockLib::mylua_md5(lua_State* L)
-{
-	if (lua_gettop(L) == 0) {
-		return LuaHelper::create<MD5>(L, SOCKLIB_MD5);
-	}
-	
-	u8_t hash[16] = { 0 };
-	u32_t len = 0;
-	
-	if (lua_gettop(L) >= 2)
-		len = (u32_t) luaL_checkinteger(L, 2);
-	
-	if (lua_islightuserdata(L, 1)) {
-		void* ptr = lua_touserdata(L, 1);
-		MD5_build(hash, ptr, len);
-	} else if (lua_isstring(L, 1) /*&& !lua_isnumber(L, 1)*/) {
-		const char* str = luaL_checkstring(L, 1);
-		if (!len) len = (u32_t)lua_strlen(L, 1);
-		MD5_build(hash, str, len);
-	} else if (lua_isuserdata(L, 1)) {
-		SockBuf* buf = SockBuf::mylua_this(L, 1);
-		if (buf) {
-			if (!len || len > buf->len())
-				len = buf->len();
-			MD5_build(hash, buf->pos(), len);
-		} else {
-			luaL_error(L, "%s:md5(<unknown data>) .", SockLib::libName());
-			return 1;
-		}
-	} else {
-		luaL_error(L, "%s:md5(<unknown data>) .", SockLib::libName());
-		return 1;
-	}
-
-	char hex[128];
-	for (int i = 0; i < 16; ++i)
-		sprintf(hex + i * 2, "%02x", hash[i]);
-	lua_pushstring(L, hex);
-
-	return 1;
-}
-
-int SockLib::mylua_sha1(lua_State* L)
-{
-	if (lua_gettop(L) == 0) {
-		return LuaHelper::create<SHA1>(L, SOCKLIB_SHA1);
-	}
-	
-	u8_t hash[20] = { 0 };
-	u32_t len = 0;
-	
-	if (lua_gettop(L) >= 2)
-		len = (u32_t) luaL_checkinteger(L, 2);
-	
-	if (lua_islightuserdata(L, 1)) {
-		void* ptr = lua_touserdata(L, 1);
-		SHA1_build(hash, ptr, len);
-	} else if (lua_isstring(L, 1) /*&& !lua_isnumber(L, 1)*/) {
-		const char* str = luaL_checkstring(L, 1);
-		if (!len) len = (u32_t)lua_strlen(L, 1);
-		SHA1_build(hash, str, len);
-	} else if (lua_isuserdata(L, 1)) {
-		SockBuf* buf = SockBuf::mylua_this(L, 1);
-		if (buf) {
-			if (!len || len > buf->len())
-				len = buf->len();
-			SHA1_build(hash, buf->pos(), len);
-		} else {
-			luaL_error(L, "%s:sha1(<unknown data>) .", SockLib::libName());
-			return 1;
-		}
-	} else {
-		luaL_error(L, "%s:sha1(<unknown data>) .", SockLib::libName());
-		return 1;
-	}
-
-	char hex[128];
-	for (int i = 0; i < 20; ++i)
-		sprintf(hex + i * 2, "%02x", hash[i]);
-	lua_pushstring(L, hex);
-
-	return 1;
-}
-
-int SockLib::mylua_b64enc(lua_State* L)
-{
-	return 0;
-}
-
-int SockLib::mylua_b64dec(lua_State* L)
-{
-	return 0;
-}
-
-#endif // SOCKLIB_ALG
 
 #endif // SOCKLIB_TO_LUA
 
@@ -943,27 +708,6 @@ void SockTcp::close()
 }
 
 //----------------------------------------------------------------------------
-// todo:
-//		gethostbyname() is blocking
-// 		add a DNS quering thread
-//
-static u32_t ip_s2n(const char* addr)
-{
-	u32_t ip = inet_addr(addr);
-
-	if (!ip || ip == INADDR_NONE) {
-		hostent* host = ::gethostbyname(addr);
-		if (host && host->h_length)  {
-			sockaddr_in addr = { 0 };
-			memcpy(&addr.sin_addr, host->h_addr_list[0], host->h_length);
-			ip = addr.sin_addr.s_addr;
-		}
-	}
-	
-	return (ip == INADDR_NONE ? 0 : ip);
-}
-
-//----------------------------------------------------------------------------
 //
 int SockTcp::connect(const std::string& host, u16_t port)
 {
@@ -976,7 +720,7 @@ int SockTcp::connect(const std::string& host, u16_t port)
 
 	addr.sin_len		 = sizeof(addr);
 	addr.sin_family      = PF_INET;
-	addr.sin_addr.s_addr = ip_s2n(host.c_str());
+	addr.sin_addr.s_addr = Util::ips2n(host.c_str());
 	addr.sin_port        = htons(port);
 
 	_sockState = SockLib::STA_CONNECTTING;
@@ -1017,7 +761,7 @@ int SockTcp::bind(const std::string& ip, u16_t port)
 {
 	u32_t ipn = INADDR_ANY;
 	if (ip.length() > 0)
-		ipn = ip_s2n(ip.c_str());
+		ipn = Util::ips2n(ip);
 	
 	sockaddr_in addr = { 0 };
 	addr.sin_family      = AF_INET;
@@ -1179,6 +923,9 @@ void SockTcp::onAccept()
 void SockTcp::onRecv()
 {
 	doRecv();
+	
+	if (isClosed())
+		return;
 
 #ifdef SOCKLIB_DEBUG
 //	std::cout << SOCKLIB_TCP << "{fd=" << fd() << "}:onRecv(" << _recvBuf->len() << ")" << std::endl;
@@ -1203,6 +950,9 @@ void SockTcp::onRecv()
 void SockTcp::onSend()
 {
 	doSend();
+	
+	if (isClosed())
+		return;
 	
 #if SOCKLIB_TO_LUA
 	if (_mylua_onSend) {
@@ -2320,7 +2070,7 @@ int RC4::mylua_gc(lua_State* L)
 
 int RC4::mylua_toString(lua_State* L)
 {
-	RC4* _this = LuaHelper::get<RC4>(L, SOCKLIB_RC4, 1);
+//	RC4* _this = LuaHelper::get<RC4>(L, SOCKLIB_RC4, 1);
 	
 	lua_pushfstring(L, "%s", SOCKLIB_RC4.c_str());
 	
@@ -2645,7 +2395,7 @@ int MD5::mylua_gc(lua_State* L)
 
 int MD5::mylua_toString(lua_State* L)
 {
-	MD5* _this = LuaHelper::get<MD5>(L, SOCKLIB_MD5, 1);
+//	MD5* _this = LuaHelper::get<MD5>(L, SOCKLIB_MD5, 1);
 	
 	lua_pushfstring(L, "%s", SOCKLIB_MD5.c_str());
 	
@@ -2880,7 +2630,7 @@ int SHA1::mylua_gc(lua_State* L)
 
 int SHA1::mylua_toString(lua_State* L)
 {
-	SHA1* _this = LuaHelper::get<SHA1>(L, SOCKLIB_SHA1, 1);
+//	SHA1* _this = LuaHelper::get<SHA1>(L, SOCKLIB_SHA1, 1);
 	
 	lua_pushfstring(L, "%s", SOCKLIB_SHA1.c_str());
 	
@@ -2888,6 +2638,673 @@ int SHA1::mylua_toString(lua_State* L)
 }
 #endif // SOCKLIB_TO_LUA
 
+
+///////////////////////////////////////////////////////////////////////////////
+// Base64
+//
+static char b64_encbyte(u8_t c)
+{
+	if (c <= 25)
+		return 'A' + c;
+	else if (c >= 26 && c <= 51)
+		return 'a' + (c - 26);
+	else if (c >= 52 && c <= 61)
+		return '0' + (c - 52);
+	else if (c == 62)
+		return '+';
+	else if (c == 63)
+		return '/';
+	else
+		return '=';
+}
+
+static u8_t b64_decbyte(const char* szSrc, int& pos, int maxLen)
+{
+	char c;
+	
+	// 跳过空格、回车换行等空白及无效字符
+	while (pos < maxLen)
+	{
+		c = szSrc[pos++];
+
+		if (::isupper(c)) return c - 'A';
+		else if (::islower(c)) return c - 'a' + 26;
+		else if (::isdigit(c)) return c - '0' + 52;
+		else if (c == '+') return 62;
+		else if (c == '/') return 63;
+		else if (c == '=') return 0;
+	}
+
+	return 0;
+}
+
+/// 编码
+static int b64_encode(const u8_t* szSrc, int lenSrc, char* szDst)
+{
+	u8_t c;
+	int i = 0;
+
+	char* oldDst = szDst;
+	
+	while (i < lenSrc)
+	{
+		c = (0xFC & szSrc[i]) >> 2; 
+		*szDst = b64_encbyte(c);
+		i++; szDst++;
+
+		if (i >= lenSrc)
+		{
+			c = (0x03 & szSrc[i-1]) << 4;
+			*szDst = b64_encbyte(c);
+			szDst++;
+			break;
+		}
+		
+		c = (0x03 & szSrc[i-1]) << 4 | (0xF0 & szSrc[i]) >> 4; 
+		*szDst = b64_encbyte(c);
+		i++; szDst++;
+
+		if (i >= lenSrc)
+		{
+			c = (0x0F & szSrc[i-1]) << 2;
+			*szDst = b64_encbyte(c);
+			szDst++;
+			break;
+		}
+		c = (0x0F & szSrc[i-1])<<2 | (0xC0 & szSrc[i])>>6;
+		*szDst = b64_encbyte(c);
+		szDst++;
+
+		c = 0x3F & szSrc[i];
+		*szDst = b64_encbyte(c);
+		i++; szDst++;
+	}
+	
+	int n = (lenSrc * 8) % 3;
+	for (int j = 0; j < n; ++j) {
+		*szDst = '=';
+		i++; szDst++;
+	}
+
+	*szDst = 0;
+
+	return (int)(szDst - oldDst);
+}
+
+/// 解码
+static int b64_decode(const char* szSrc, int lenSrc, char* szDst)
+{
+	u8_t c0, c1, c2, c3, c;
+
+	char* oldDst = szDst;
+	
+	int addLen = lenSrc % 4; 
+	
+	for (int i = 0; i < (lenSrc + addLen); )
+	{
+		if (i < lenSrc) c0 = b64_decbyte(szSrc, i, lenSrc); else { c0 = 0; i++; }
+		if (i < lenSrc) c1 = b64_decbyte(szSrc, i, lenSrc); else { c1 = 0; i++; }
+		if (i < lenSrc) c2 = b64_decbyte(szSrc, i, lenSrc); else { c2 = 0; i++; }
+		if (i < lenSrc) c3 = b64_decbyte(szSrc, i, lenSrc); else { c3 = 0; i++; }
+		
+		c = c0 << 2 | c1 >> 4;
+		*szDst = c;
+		szDst++;
+
+		c = c1 << 4 | c2 >> 2;
+		*szDst = c;
+		szDst++;
+
+		c = c2 << 6 | c3;
+		*szDst = c;
+		szDst++;
+	}
+
+	*szDst = 0;
+
+	return (int)(szDst - oldDst);
+}
+
+/// 编码
+std::string Base64_encode(const void* buf, u32_t len)
+{
+	if (!len)
+		len = (u32_t)strlen((const char*) buf);
+
+	std::string str;
+	
+	char* out = new char[len * 4];
+	if (out) {
+		int ret = b64_encode((const u8_t*)buf, len, out);
+		str.assign(out, ret);
+		delete[] out;
+	}
+
+	return str;
+}
+
+/// 解码（可能返回二进制）
+std::string Base64_decode(const char* sz, u32_t len)
+{
+	if (!len)
+		len = (u32_t)strlen(sz);
+
+	std::string str;
+
+	char* out = new char[len * 4];
+	if (out) {
+		int ret = b64_decode((const char*)sz, len, out);
+		str.assign(out, ret);
+		delete[] out;
+	}
+
+	return str;
+}
+
 #endif // SOCKLIB_ALG
+
+
+///////////////////////////////////////////////////////////////////////////////
+// Util
+//
+#ifdef _WIN32
+int gettimeofday(struct timeval *tp, void *tzp)
+{
+	time_t clock;
+	struct tm tm;
+	SYSTEMTIME wtm;
+	GetLocalTime(&wtm);
+	tm.tm_year = wtm.wYear - 1900;
+	tm.tm_mon = wtm.wMonth - 1;
+	tm.tm_mday = wtm.wDay;
+	tm.tm_hour = wtm.wHour;
+	tm.tm_min = wtm.wMinute;
+	tm.tm_sec = wtm.wSecond;
+	tm.tm_isdst = -1;
+	clock = mktime(&tm);
+	tp->tv_sec = clock;
+	tp->tv_usec = wtm.wMilliseconds * 1000;
+	return (0);
+}
+#endif
+
+u64_t Util::tick()
+{
+    struct timeval tv;     
+    gettimeofday(&tv, NULL);
+    return tv.tv_sec * 1000 + tv.tv_usec / 1000;
+}
+
+
+//----------------------------------------------------------------------------
+// todo:
+//		gethostbyname() is blocking
+// 		add a DNS quering thread
+//
+u32_t Util::ips2n(const std::string& addr)
+{
+	u32_t ip = inet_addr(addr.c_str());
+
+	if (!ip || ip == INADDR_NONE) {
+		hostent* host = ::gethostbyname(addr.c_str());
+		if (host && host->h_length)  {
+			sockaddr_in addr = { 0 };
+			memcpy(&addr.sin_addr, host->h_addr_list[0], host->h_length);
+			ip = addr.sin_addr.s_addr;
+		}
+	}
+	
+	return (ip == INADDR_NONE ? 0 : ip);
+}
+
+std::string Util::ipn2s(u32_t ip)
+{
+	struct in_addr iaddr;
+	iaddr.s_addr = ip;
+	std::string ret = inet_ntoa(iaddr);
+	return ret;
+}
+
+std::string Util::urlenc(const std::string& url)
+{
+	static char HEX_CHARS[] = "0123456789ABCDEF";
+	const char* str = url.c_str();
+
+	u32_t len = (u32_t)::strlen(str);
+	if (!len) return "";
+
+	char* buf = new char[len * 5];
+	char* psz = buf;
+	
+	for (u32_t i = 0; i < len; ++i) 
+	{
+		int v = (int)(str[i]);
+		
+	#if 1
+		if ((v >= '0' && v <= '9') ||
+			(v >= 'a' && v <= 'z') ||
+			(v >= 'A' && v <= 'Z') )
+	#else
+		if (isalnum(v))	// ctype assert
+	#endif
+		{
+			*psz++ = (char)v;
+		}
+		else
+		{
+			*psz++ = '%';
+			*psz++ = HEX_CHARS[(v >> 4) & 15];
+			*psz++ = HEX_CHARS[v & 15];
+		}
+	}
+	
+	*psz = 0;
+	
+	std::string ret(buf);
+	
+	delete[] buf;
+	
+	return ret;
+}
+
+std::string Util::urldec(const std::string& url)
+{
+	return "";
+}
+
+#if SOCKLIB_TO_LUA
+#if SOCKLIB_ALG
+//----------------------------------------------------------------------------
+// u32_t opteration, @return a u32_t
+//
+// 2 args:
+// 	socklib.u32op("~", a) socklib.u32op("!", a)
+//
+// 3 args:
+// 	socklib.u32op(a, "&", b) socklib.u32op(a, "<<", b)
+//
+int Util::mylua_u32op(lua_State* L)
+{
+	int argc = lua_gettop(L);
+	
+	u32_t a, b, r = 0;
+	const char* s;
+	
+	if (argc == 2) {
+		s = luaL_checkstring(L, 1);
+		a = (u32_t)luaL_checkinteger(L, 2);
+		
+		if (0 == strcmp(s, "~")) {
+			r = ~a;
+		} else if (0 == strcmp(s, "!")) {
+			r = !a;
+		} else {
+			luaL_error(L, "%s.u32op(opt, num) unsupported opt=\"%s\"", SockLib::libName(), s);
+		}
+	} else if (argc == 3) {
+		a = (u32_t)luaL_checkinteger(L, 1);
+		s = luaL_checkstring(L, 2);
+		b = (u32_t)luaL_checkinteger(L, 3);
+		
+		if (0 == strcmp(s, "&")) {
+			r = a & b;
+		} else if (0 == strcmp(s, "&~") || 0 == strcmp(s, "& ~")) {
+			r = (a & (~b));
+		} else if (0 == strcmp(s, "&!") || 0 == strcmp(s, "& !")) {
+			r = (a & (!b));
+		} else if (0 == strcmp(s, "&=")) {
+			r = (a &= b);
+		} else if (0 == strcmp(s, "&=~") || 0 == strcmp(s, "&= ~")) {
+			r = (a &= (~b));
+		} else if (0 == strcmp(s, "&=!") || 0 == strcmp(s, "&= !")) {
+			r = (a &= (!b));
+		} else if (0 == strcmp(s, "|")) {
+			r = a | b;
+		} else if (0 == strcmp(s, "|~") || 0 == strcmp(s, "| ~")) {
+			r = (a | (~b));
+		} else if (0 == strcmp(s, "|!") || 0 == strcmp(s, "| !")) {
+			r = (a | (!b));
+		} else if (0 == strcmp(s, "|=")) {
+			r = (a |= b);
+		} else if (0 == strcmp(s, "|=~") || 0 == strcmp(s, "|= ~")) {
+			r = (a |= (~b));
+		} else if (0 == strcmp(s, "|=!") || 0 == strcmp(s, "|= !")) {
+			r = (a |= (!b));
+		} else if (0 == strcmp(s, "^")) {
+			r = a ^ b;
+		} else if (0 == strcmp(s, "^=")) {
+			r = (a ^= b);
+		} else if (0 == strcmp(s, "^=~") || 0 == strcmp(s, "^= ~")) {
+			r = (a ^= (~b));
+		} else if (0 == strcmp(s, "^=!") || 0 == strcmp(s, "^= !")) {
+			r = (a ^= (!b));
+		} else if (0 == strcmp(s, ">>")) {
+			r = a >> b;
+		} else if (0 == strcmp(s, "<<")) {
+			r = a << b;
+		} else if (0 == strcmp(s, "&&")) {
+			lua_pushboolean(L, a && b);
+			return 1;
+		} else if (0 == strcmp(s, "||")) {
+			lua_pushboolean(L, a || b);
+			return 1;
+		} else {
+			luaL_error(L, "%s.u32op(num1, opt, num2) unsupported opt=\"%s\"", SockLib::libName(), s);
+		}
+	} else {
+		luaL_error(L, "usage: \n%s.u32op(opt, num) or %s.u32op(num1, opt, num2) \ne.g. %s.u32op(\"~\", 123) %s.u32op(123, \"<<\", 2)",
+			SockLib::libName(), SockLib::libName(), SockLib::libName(), SockLib::libName());
+	}
+	
+	lua_pushinteger(L, r);
+	
+	return 1;
+}
+
+int Util::mylua_tick(lua_State* L)
+{
+	lua_pushnumber(L, Util::tick());
+	return 1;
+}
+
+int Util::mylua_urlenc(lua_State* L)
+{
+	const char* url = luaL_checkstring(L, 1);
+	std::string ret = Util::urlenc(url);
+	lua_pushstring(L, ret.c_str());
+	return 1;
+}
+
+int Util::mylua_urldec(lua_State* L)
+{
+	const char* url = luaL_checkstring(L, 1);
+	std::string ret = Util::urldec(url);
+	lua_pushstring(L, ret.c_str());
+	return 1;
+}
+
+int Util::mylua_ips2n(lua_State* L)
+{
+	const char* addr = luaL_checkstring(L, 1);
+	lua_pushnumber(L, Util::ips2n(addr));
+	return 1;
+}
+
+int Util::mylua_ipn2s(lua_State* L)
+{
+	u32_t ipn = (u32_t)luaL_checknumber(L, 1);
+	std::string ret = Util::ipn2s(ipn);
+	lua_pushstring(L, ret.c_str());
+	return 1;
+}
+
+int Util::mylua_htons(lua_State* L)
+{
+	u16_t v = (u16_t)luaL_checknumber(L, 1);
+	lua_pushnumber(L, htons(v));
+	return 1;
+}
+
+int Util::mylua_htonl(lua_State* L)
+{
+	u32_t v = (u32_t)luaL_checknumber(L, 1);
+	lua_pushnumber(L, htonl(v));
+	return 1;
+}
+
+int Util::mylua_htonll(lua_State* L)
+{
+	u64_t v = (u64_t)luaL_checknumber(L, 1);
+	lua_pushnumber(L, htonll(v));
+	return 1;
+}
+
+int Util::mylua_ntohs(lua_State* L)
+{
+	u16_t v = (u16_t)luaL_checknumber(L, 1);
+	lua_pushnumber(L, ntohs(v));
+	return 1;
+}
+
+int Util::mylua_ntohl(lua_State* L)
+{
+	u32_t v = (u32_t)luaL_checknumber(L, 1);
+	lua_pushnumber(L, ntohl(v));
+	return 1;
+}
+
+int Util::mylua_ntohll(lua_State* L)
+{
+	u64_t v = (u64_t)luaL_checknumber(L, 1);
+	lua_pushnumber(L, ntohll(v));
+	return 1;
+}
+
+int Util::mylua_crc32(lua_State* L)
+{
+	u32_t len = 0, crc = 0, ret = 0;
+	
+	if (lua_gettop(L) >= 2)
+		len = (u32_t) luaL_checkinteger(L, 2);
+	
+	if (lua_gettop(L) >= 3)
+		crc = (u32_t) luaL_checkinteger(L, 3);
+	
+	if (lua_islightuserdata(L, 1)) {
+		void* ptr = lua_touserdata(L, 1);
+		ret = CRC32_build(ptr, len, crc);
+	} else if (lua_isstring(L, 1) /*&& !lua_isnumber(L, 2)*/) {
+		const char* str = luaL_checkstring(L, 1);
+		if (!len) len = (u32_t)lua_strlen(L, 1);
+		ret = CRC32_build(str, len, crc);
+	} else if (lua_isuserdata(L, 1)) {
+		SockBuf* buf = SockBuf::mylua_this(L, 1);
+		if (buf) {
+			if (!len || len > buf->len())
+				len = buf->len();
+			ret = CRC32_build(buf->pos(), len, crc);
+		} else {
+			luaL_error(L, "%s:crc32(<unknown data>) .", SockLib::libName());
+		}
+	} else {
+		luaL_error(L, "%s:crc32(<unknown data>) .", SockLib::libName());
+	}
+	
+	lua_pushinteger(L, ret);
+
+	return 1;
+}
+
+int Util::mylua_rc4(lua_State* L)
+{
+	if (lua_gettop(L) == 0) {
+		return LuaHelper::create<RC4>(L, SOCKLIB_RC4);
+	}
+	
+	u32_t len = 0;
+	
+	const char* key = luaL_checkstring(L, 1);
+	u32_t keySize = (u32_t)lua_strlen(L, 1);
+	
+	if (lua_gettop(L) >= 3)
+		len = (u32_t) luaL_checkinteger(L, 3);
+	
+	u8_t* outDat = 0;
+	
+	if (lua_islightuserdata(L, 2)) {
+		void* ptr = lua_touserdata(L, 2);
+		outDat = (u8_t*)malloc(len);
+		RC4_build(key, keySize, ptr, outDat, len);
+	} else if (lua_isstring(L, 2) /*&& !lua_isnumber(L, 1)*/) {
+		const char* str = luaL_checkstring(L, 2);
+		if (!len) len = (u32_t)lua_strlen(L, 2);
+		outDat = (u8_t*)malloc(len);
+		RC4_build(key, keySize, str, outDat, len);
+	} else if (lua_isuserdata(L, 2)) {
+		SockBuf* buf = SockBuf::mylua_this(L, 2);
+		if (buf) {
+			if (!len || len > buf->len())
+				len = buf->len();
+			outDat = (u8_t*)malloc(len);
+			RC4_build(key, keySize, buf->pos(), outDat, len);
+		} else {
+			luaL_error(L, "%s:rc4(<unknown data>) .", SockLib::libName());
+			return 1;
+		}
+	} else {
+		luaL_error(L, "%s:rc4(<unknown data>) .", SockLib::libName());
+		return 1;
+	}
+
+	if (outDat) {
+		SockBuf* buf = new SockBuf();
+		LuaHelper::add(buf);
+		buf->w(outDat, len);
+		free(outDat);
+		return LuaHelper::bind<SockBuf>(L, SOCKLIB_BUF, buf);
+	}
+	
+	return 0;
+}
+
+int Util::mylua_md5(lua_State* L)
+{
+	if (lua_gettop(L) == 0) {
+		return LuaHelper::create<MD5>(L, SOCKLIB_MD5);
+	}
+	
+	u8_t hash[16] = { 0 };
+	u32_t len = 0;
+	
+	if (lua_gettop(L) >= 2)
+		len = (u32_t) luaL_checkinteger(L, 2);
+	
+	if (lua_islightuserdata(L, 1)) {
+		void* ptr = lua_touserdata(L, 1);
+		MD5_build(hash, ptr, len);
+	} else if (lua_isstring(L, 1) /*&& !lua_isnumber(L, 1)*/) {
+		const char* str = luaL_checkstring(L, 1);
+		if (!len) len = (u32_t)lua_strlen(L, 1);
+		MD5_build(hash, str, len);
+	} else if (lua_isuserdata(L, 1)) {
+		SockBuf* buf = SockBuf::mylua_this(L, 1);
+		if (buf) {
+			if (!len || len > buf->len())
+				len = buf->len();
+			MD5_build(hash, buf->pos(), len);
+		} else {
+			luaL_error(L, "%s:md5(<unknown data>) .", SockLib::libName());
+			return 1;
+		}
+	} else {
+		luaL_error(L, "%s:md5(<unknown data>) .", SockLib::libName());
+		return 1;
+	}
+
+	char hex[128];
+	for (int i = 0; i < 16; ++i)
+		sprintf(hex + i * 2, "%02x", hash[i]);
+	lua_pushstring(L, hex);
+
+	return 1;
+}
+
+int Util::mylua_sha1(lua_State* L)
+{
+	if (lua_gettop(L) == 0) {
+		return LuaHelper::create<SHA1>(L, SOCKLIB_SHA1);
+	}
+	
+	u8_t hash[20] = { 0 };
+	u32_t len = 0;
+	
+	if (lua_gettop(L) >= 2)
+		len = (u32_t) luaL_checkinteger(L, 2);
+	
+	if (lua_islightuserdata(L, 1)) {
+		void* ptr = lua_touserdata(L, 1);
+		SHA1_build(hash, ptr, len);
+	} else if (lua_isstring(L, 1) /*&& !lua_isnumber(L, 1)*/) {
+		const char* str = luaL_checkstring(L, 1);
+		if (!len) len = (u32_t)lua_strlen(L, 1);
+		SHA1_build(hash, str, len);
+	} else if (lua_isuserdata(L, 1)) {
+		SockBuf* buf = SockBuf::mylua_this(L, 1);
+		if (buf) {
+			if (!len || len > buf->len())
+				len = buf->len();
+			SHA1_build(hash, buf->pos(), len);
+		} else {
+			luaL_error(L, "%s:sha1(<unknown data>) .", SockLib::libName());
+			return 1;
+		}
+	} else {
+		luaL_error(L, "%s:sha1(<unknown data>) .", SockLib::libName());
+		return 1;
+	}
+
+	char hex[128];
+	for (int i = 0; i < 20; ++i)
+		sprintf(hex + i * 2, "%02x", hash[i]);
+	lua_pushstring(L, hex);
+
+	return 1;
+}
+
+int Util::mylua_b64enc(lua_State* L)
+{
+	std::string ret;
+
+	u32_t len = 0;
+	if (lua_gettop(L) >= 2)
+		len = (u32_t) luaL_checkinteger(L, 2);
+	
+	if (lua_islightuserdata(L, 1)) {
+		void* ptr = lua_touserdata(L, 1);
+		ret = Base64_encode(ptr, len);
+	} else if (lua_isstring(L, 1) /*&& !lua_isnumber(L, 1)*/) {
+		const char* str = luaL_checkstring(L, 1);
+		if (!len) len = (u32_t)lua_strlen(L, 1);
+		ret = Base64_encode(str, len);
+	} else if (lua_isuserdata(L, 1)) {
+		SockBuf* buf = SockBuf::mylua_this(L, 1);
+		if (buf) {
+			if (!len || len > buf->len())
+				len = buf->len();
+			ret = Base64_encode(buf->pos(), len);
+		} else {
+			luaL_error(L, "%s:b64enc(<unknown data>) .", SockLib::libName());
+			return 1;
+		}
+	} else {
+		luaL_error(L, "%s:b64enc(<unknown data>) .", SockLib::libName());
+		return 1;
+	}
+	
+	lua_pushstring(L, ret.c_str());
+
+	return 1;
+}
+
+int Util::mylua_b64dec(lua_State* L)
+{
+	std::string ret;
+
+	u32_t len = 0;
+	if (lua_gettop(L) >= 2)
+		len = (u32_t) luaL_checkinteger(L, 2);
+	
+	const char* str = luaL_checkstring(L, 1);
+	if (!len) len = (u32_t)lua_strlen(L, 1);
+	
+	ret = Base64_decode(str, len);
+	
+	lua_pushstring(L, ret.c_str());
+
+	return 1;
+}
+
+#endif // SOCKLIB_ALG
+#endif // SOCKLIB_TO_LUA
 
 SOCKLIB_NAMESPACE_END

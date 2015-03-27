@@ -1,102 +1,140 @@
 
-function test_md5()
-	print("---------------------test_md5() {")
+function test_util_md5()
+	print("---------------------test_util_md5() {")
+
+	local util = socklib.util
 
 	-- 1 a md5 function
-	print( socklib.md5("hello") )
+	print( util.md5("hello") )
 
 	-- 2 a md5 obj
-	print( socklib.md5():init():update("hello"):final() )
+	print( util.md5():init():update("hello"):final() )
 
 	-- 3 more step update data and data
-	print( socklib.md5():init():update("he"):update("llo"):final() )
+	print( util.md5():init():update("he"):update("llo"):final() )
 
 	-- 4 socklib.buf is a byte stream
 	local buf = socklib.buf():w("hello")
-	print( socklib.md5(buf) )
-	print( socklib.md5():init():update(buf):final() )
+	print( util.md5(buf) )
+	print( util.md5():init():update(buf):final() )
 
 	-- 5 final(out_format: nil/hex=default, bin=lightuserdata, buf=socklib.buf)
-	local bbb = socklib.md5():init():update("hello"):final("buf")
+	local bbb = util.md5():init():update("hello"):final("buf")
 	print( bbb )
 
-	print("---------------------test_md5() }")
+	print("---------------------test_util_md5() }")
 end
 
 
-function test_sha1()
-	print("---------------------test_sha1() {")
+function test_util_sha1()
+	print("---------------------test_util_sha1() {")
+
+	local util = socklib.util
 
 	-- 1 a sha1 function
-	print( socklib.sha1("hello") )
+	print( util.sha1("hello") )
 
 	-- 2 a sha1 obj
-	print( socklib.sha1():init():update("hello"):final() )
+	print( util.sha1():init():update("hello"):final() )
 
 	-- 3 more step update data and data
-	print( socklib.sha1():init():update("he"):update("llo"):final() )
+	print( util.sha1():init():update("he"):update("llo"):final() )
 
 	-- 4 socklib.buf is a byte stream
 	local buf = socklib.buf():w("hello")
-	print( socklib.sha1(buf) )
-	print( socklib.sha1():init():update(buf):final() )
+	print( util.sha1(buf) )
+	print( util.sha1():init():update(buf):final() )
 
 	-- 5 final(out_format: nil/hex=default, bin=lightuserdata, buf=socklib.buf)
-	local bbb = socklib.sha1():init():update("hello"):final("buf")
+	local bbb = util.sha1():init():update("hello"):final("buf")
 	print( bbb )
 
-	print("---------------------test_sha1() }")
+	print("---------------------test_util_sha1() }")
 end
 
-function test_rc4()
+function test_util_rc4()
+	print("---------------------test_util_rc4() {")
+
+	local util = socklib.util
+
 	-- 1 a rc4 function
-	print( socklib.rc4("key_aa", "data_bb") )
+	print( util.rc4("key_aa", "data_bb") )
 
 	-- 2 a rc4 obj
-	print( socklib.rc4():setKey("key_aa"):process("data_bb") )
+	print( util.rc4():setKey("key_aa"):process("data_bb") )
 
 	-- 3 use fun: rc4(rc4_data) = originally data
-	local buf = socklib.rc4("key_aa", "data_bb")
-	print (socklib.rc4("key_aa", buf):ps() )
+	local buf = util.rc4("key_aa", "data_bb")
+	print (util.rc4("key_aa", buf):ps() )
 
 	-- 4 use obj: rc4(rc4_data) = originally data
-	local buf = socklib.rc4():setKey("key_aa"):process("data_bb")
-	print (socklib.rc4():setKey("key_aa"):process(buf):ps() )
+	local buf = util.rc4():setKey("key_aa"):process("data_bb")
+	print (util.rc4():setKey("key_aa"):process(buf):ps() )
+
+	print("---------------------test_util_rc4() }")
 end
 
-function test_crc32()
-	-- socklib.crc32(a string or a lightudata or a socklib.buf, optinal len, optinal salk)
+function test_util_crc32()
+	print("---------------------test_util_crc32() {")
 
-	print( socklib.crc32("haha") )
-	print( socklib.crc32("haha", 4) )
-	print( socklib.crc32("haha", 4, 0) )
-	print( socklib.crc32("haha", 4, 123) )
+	local util = socklib.util
+
+	-- util.crc32(a string or a lightudata or a socklib.buf, optinal len, optinal salk)
+
+	print( util.crc32("haha") )
+	print( util.crc32("haha", 4) )
+	print( util.crc32("haha", 4, 0) )
+	print( util.crc32("haha", 4, 123) )
 
 	-- socklib.buf is a byte stream
-	print( socklib.crc32( socklib.buf():w("haha") ) )
+	print( util.crc32( socklib.buf():w("haha") ) )
+
+	print("---------------------test_util_crc32() }")
 end
 
-function test_base64()
---	local e = socklib.b64enc("haha")
---	local d = socklib.b64dec(e)
+function test_util_base64()
+	print("---------------------test_util_base64() {")
 
---	print(e)
---	print(d)
+	local util = socklib.util
+
+	local e = util.b64enc("haha")
+	local d = util.b64dec(e)
+
+	print(e)
+	print(d)
+
+	print("---------------------test_util_base64() }")
 end
 
-function test_u32op()
-	print("---------------------test_u32op() {")
+function test_util_u32op()
+	print("---------------------test_util_u32op() {")
 
-	-- 2 args = socklib.u32op("opt_str", num)
-	print( socklib.u32op("!", 123) )
-	print( socklib.u32op("~", 123) )
+	local util = socklib.util
 
-	-- 3 args = socklib.u32op(num1, "opt_str", num2)
-	print( socklib.u32op(123, "<<", 2) )
-	print( socklib.u32op(123, "&", 2) )
-	print( socklib.u32op(123, "|= ~", 2) )
+	-- 2 args = socklib.util.u32op("opt_str", num)
+	print( util.u32op("!", 123) )
+	print( util.u32op("~", 123) )
 
-	print("---------------------test_u32op() }")
+	-- 3 args = socklib.util.u32op(num1, "opt_str", num2)
+	print( util.u32op(123, "<<", 2) )
+	print( util.u32op(123, "&", 2) )
+	print( util.u32op(123, "|= ~", 2) )
+
+	print("---------------------test_util_u32op() }")
+end
+
+function test_util_other()
+	print("---------------------test_util_other() {")
+
+	local util = socklib.util
+
+	print( util.tick() )
+	print( util.urlenc("http://aa.bb.cc/dd ee.asp") )
+	print( util.urldec(util.urlenc("http://aa.bb.cc/dd ee.asp")) )
+	print( util.ips2n("192.168.0.1") )
+	print( util.ipn2s(util.ips2n("192.168.0.1")) )
+
+	print("---------------------test_util_other() }")
 end
 
 -- socklib.buf is a byte stream
@@ -173,16 +211,40 @@ end
 function test_udpclient()
 end
 
---test_md5()
---test_sha1()
---test_rc4()
---test_crc32()
---test_base64()
---test_u32op()
+function test_socklib_info()
+	print("---------------------test_socklib_info() {")
+
+	print("@ " .. socklib._VERSION)
+
+	for k, v in pairs(socklib) do
+		print("socklib[" .. tostring(k) .. "]=" .. tostring(v))
+	end
+
+	print("@ socklib.util")
+	for k, v in pairs(socklib.util) do
+		print("socklib.util[" .. tostring(k) .. "]=" .. tostring(v))
+	end
+
+	print("@ socklib.util.md5")
+	for k, v in pairs(getmetatable("socklib.md5")) do
+		print("socklib.util.md5[" .. tostring(k) .. "]=" .. tostring(v))
+	end
+
+	print("---------------------test_socklib_info() }")
+end
+
+test_socklib_info()
+
+test_util_md5()
+test_util_sha1()
+test_util_rc4()
+test_util_crc32()
+test_util_base64()
+test_util_u32op()
+test_util_other()
+
 --test_buf()
 --test_tcpserver()
-test_tcpclient()
+--test_tcpclient()
 --test_udpserver()
 --test_udpclient()
-
-
