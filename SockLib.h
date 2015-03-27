@@ -248,6 +248,8 @@ public:
 	
 	static void poll(u32_t usec = 10);
 
+	static const char* libName() { return _libName.c_str(); }
+
 protected:
     static int _poll_per_FD_SETSIZE(SockMap::iterator begin, SockMap::iterator end, u32_t usec = 10);
 	static void beforePoll();
@@ -262,10 +264,11 @@ protected:
 
 	static fd_set	_fdr, _fdw, _fde;
 	static timeval	_tv;
+
+	static std::string	_libName;
 	
 #if SOCKLIB_TO_LUA
 public:
-	static const char* libName() { return _libName.c_str(); }
 
 	static int mylua_regAs(lua_State* L, const char* libName);
 	static int mylua_reg(lua_State* L) { return mylua_regAs(L, SOCKLIB_NAME); }
@@ -279,7 +282,6 @@ public:
 	static lua_State* luaState() { return _luaState; }
 	
 private:
-	static std::string	_libName;
 	static lua_State*	_luaState;
 #endif // SOCKLIB_TO_LUA
 };
@@ -336,7 +338,9 @@ protected:
 	int _fd = -1;
 	
 	friend SockLib;
+#if SOCKLIB_TO_LUA
 	friend LuaHelper;
+#endif
 };
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -382,9 +386,10 @@ protected:
 	SockBuf*	_sendBuf;
 	
 	friend SockLib;
-	friend LuaHelper;
 	
 #if SOCKLIB_TO_LUA
+	friend LuaHelper;
+
 public:
 	static SockTcp* mylua_this(lua_State* L, int idx = 1);
 
@@ -432,10 +437,10 @@ public:
 private:
 	
 	friend SockLib;
-	friend LuaHelper;
-
 
 #if SOCKLIB_TO_LUA
+	friend LuaHelper;
+
 public:
 	static SockUdp* mylua_this(lua_State* L, int idx = 1);
 
@@ -773,10 +778,10 @@ protected:
 	u32_t	_pos_r;		// read
 	
 	friend SockLib;
-	friend LuaHelper;
-
 
 #if SOCKLIB_TO_LUA
+	friend LuaHelper;
+
 public:
 	static SockBuf* mylua_this(lua_State* L, int idx = 1);
 
@@ -966,6 +971,8 @@ static inline void SHA1_build(u8_t hash[20], const void* data, u32_t len)
 std::string Base64_encode(const void* buf, u32_t len);
 std::string Base64_decode(const char* sz, u32_t len = 0);
 
+#endif // SOCKLIB_ALG
+
 ///////////////////////////////////////////////////////////////////////////////
 // class Util
 //
@@ -982,14 +989,15 @@ public:
 
 #if SOCKLIB_TO_LUA
 #if SOCKLIB_ALG
-	static int mylua_u32op(lua_State* L);
 	static int mylua_crc32(lua_State* L);
 	static int mylua_rc4(lua_State* L);
 	static int mylua_md5(lua_State* L);
 	static int mylua_sha1(lua_State* L);
 	static int mylua_b64enc(lua_State* L);
 	static int mylua_b64dec(lua_State* L);
+#endif // SOCKLIB_ALG
 
+	static int mylua_u32op(lua_State* L);
 	static int mylua_tick(lua_State* L);
 	static int mylua_urlenc(lua_State* L);
 	static int mylua_urldec(lua_State* L);
@@ -1002,12 +1010,8 @@ public:
 	static int mylua_ntohl(lua_State* L);
 	static int mylua_htonll(lua_State* L);
 	static int mylua_ntohll(lua_State* L);
-	
-#endif // SOCKLIB_ALG
 #endif // SOCKLIB_TO_LUA
 };
-
-#endif // SOCKLIB_ALG
 
 SOCKLIB_NAMESPACE_END
 

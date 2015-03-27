@@ -225,11 +225,6 @@ function test_socklib_info()
 		print("socklib.util[" .. tostring(k) .. "]=" .. tostring(v))
 	end
 
-	print("@ socklib.util.md5")
-	for k, v in pairs(getmetatable("socklib.md5")) do
-		print("socklib.util.md5[" .. tostring(k) .. "]=" .. tostring(v))
-	end
-
 	print("---------------------test_socklib_info() }")
 end
 

@@ -27,13 +27,13 @@ fd_set	SockLib::_fdw;
 fd_set	SockLib::_fde;
 timeval SockLib::_tv;
 
-#if SOCKLIB_TO_LUA
-LuaHelper::Objects	LuaHelper::_objs;
-lua_State* 			SockLib::_luaState = 0;
-
 static std::string SOCKLIB_TCP 	= SOCKLIB_NAME ".tcp";
 static std::string SOCKLIB_UDP 	= SOCKLIB_NAME ".udp";
 static std::string SOCKLIB_BUF 	= SOCKLIB_NAME ".buf";
+
+#if SOCKLIB_TO_LUA
+LuaHelper::Objects	LuaHelper::_objs;
+lua_State* 			SockLib::_luaState = 0;
 
 #if SOCKLIB_ALG
 //static std::string SOCKLIB_UTIL = SOCKLIB_NAME ".util";
@@ -74,6 +74,7 @@ void SockLib::cleanup()
 //
 void SockLib::destroy(SockPtr ref)
 {
+#if SOCKLIB_TO_LUA
 	// if lua manager it, don't destroy
 	if (!LuaHelper::found(ref)) {
 		ref->close();
@@ -83,6 +84,9 @@ void SockLib::destroy(SockPtr ref)
 	} else {
 		remove(ref);
 	}
+#else
+	remove(ref);
+#endif
 }
 
 //----------------------------------------------------------------------------
@@ -386,16 +390,17 @@ static const luaL_Reg SockBuf_Reg[] = {
 	{ NULL, 		NULL }
 };
 
-#if SOCKLIB_ALG
 static const luaL_Reg SockUtil_Reg[] = {
-	{ "u32op", 		Util::mylua_u32op },
+#if SOCKLIB_ALG
 	{ "crc32", 		Util::mylua_crc32 },
 	{ "rc4", 		Util::mylua_rc4 },
 	{ "md5", 		Util::mylua_md5 },
 	{ "sha1", 		Util::mylua_sha1 },
 	{ "b64enc", 	Util::mylua_b64enc },
 	{ "b64dec", 	Util::mylua_b64dec },
-	
+#endif // SOCKLIB_ALG
+
+	{ "u32op", 		Util::mylua_u32op },
 	{ "tick",		Util::mylua_tick },
 	{ "urlenc",		Util::mylua_urlenc },
 	{ "urldec",		Util::mylua_urldec },
@@ -411,6 +416,7 @@ static const luaL_Reg SockUtil_Reg[] = {
 	{ NULL, 		NULL }
 };
 
+#if SOCKLIB_ALG
 static const luaL_Reg AlgRC4_Reg[] = {
 	{ "setKey", 	RC4::mylua_setKey },
 	{ "process", 	RC4::mylua_process },
@@ -2913,7 +2919,6 @@ std::string Util::urldec(const std::string& url)
 }
 
 #if SOCKLIB_TO_LUA
-#if SOCKLIB_ALG
 //----------------------------------------------------------------------------
 // u32_t opteration, @return a u32_t
 //
@@ -3080,6 +3085,7 @@ int Util::mylua_ntohll(lua_State* L)
 	return 1;
 }
 
+#if SOCKLIB_ALG
 int Util::mylua_crc32(lua_State* L)
 {
 	u32_t len = 0, crc = 0, ret = 0;
