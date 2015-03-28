@@ -25,13 +25,24 @@
 #define SOCKLIB_ALG			1
 #endif
 
+// Member/Method's name case sensitivity?
+// If turn it on
+//		obj.XXX  == obj.xxx  == obj.XxX  ...
+//		obj:XX() == obj:xx() == obj:Xx() ...
+//
+// 		(affects obj belongs to socklib only)
+//
+#ifndef SOCKLIB_NOCASE
+#define SOCKLIB_NOCASE		1
+#endif
+
 // lib name in LUA
 // you can change this name
 #ifndef SOCKLIB_NAME
 #define SOCKLIB_NAME		"socklib"
 #endif
 
-// use a namespace(cpp effected only)?
+// use a cpp namespace?
 // you can change this name
 #if 1
 #define SOCKLIB_NAMESPACE_BEGIN 	namespace socklib {
@@ -61,7 +72,6 @@
 	#include <windows.h>
 	#include <process.h>
 	#include <ws2tcpip.h>
-	#pragma comment(lib,"ws2_32.lib")
 #else // !_WIN32
 	#include <sys/socket.h>
 	#include <netinet/tcp.h>
@@ -279,6 +289,10 @@ public:
 	
 	static int mylua_poll(lua_State* L);
 
+	#if SOCKLIB_NOCASE
+	static int mylua_index(lua_State* L);
+	#endif
+
 	static lua_State* luaState() { return _luaState; }
 	
 private:
@@ -399,11 +413,13 @@ public:
 	static int mylua_close(lua_State* L);
 	static int mylua_send(lua_State* L);
 	static int mylua_recv(lua_State* L);
-	static int mylua_recvBuf(lua_State* L);
-	static int mylua_sendBuf(lua_State* L);
+	static int mylua_inbuf(lua_State* L);
+	static int mylua_outbuf(lua_State* L);
+	static int mylua_onevent(lua_State* L);
+	static int mylua_setopt(lua_State* L);
+	static int mylua_index(lua_State* L);
 	static int mylua_gc(lua_State* L);
-	static int mylua_toString(lua_State* L);
-	static int mylua_onEvent(lua_State* L);
+	static int mylua_tostring(lua_State* L);
 	
 private:
 	int _mylua_onConnect = 0;
@@ -444,11 +460,14 @@ private:
 public:
 	static SockUdp* mylua_this(lua_State* L, int idx = 1);
 
-	static int mylua_sendTo(lua_State* L);
-	static int mylua_recvFrom(lua_State* L);
+	static int mylua_sendto(lua_State* L);
+	static int mylua_recvfrom(lua_State* L);
 	static int mylua_close(lua_State* L);
+	static int mylua_onevent(lua_State* L);
+	static int mylua_setopt(lua_State* L);
+	static int mylua_index(lua_State* L);
 	static int mylua_gc(lua_State* L);
-	static int mylua_toString(lua_State* L);
+	static int mylua_tostring(lua_State* L);
 	
 private:
 	int _mylua_onRecv = 0;
@@ -461,8 +480,6 @@ private:
 ///////////////////////////////////////////////////////////////////////////////
 // class SockBuf
 //
-#define SOCKBUF_BLOCK_SIZE	(1024 * 4)
-
 class SockBuf
 {
 public:
@@ -492,12 +509,20 @@ public:
 	int peek(void* data, u32_t bytes);
 	void reset();
 	
+	SockBuf& skip(u32_t bytes) {
+		if (bytes > len())
+			bytes = len();
+		_pos_r += bytes;
+		return *this;
+	}
+	
+	SockBuf& discard(u32_t bytes);
+	
 	int wbuf(const SockBuf& buf, u32_t len = 0) {
 		u32_t _le = buf.len();
 		if (_le) {
 			if (!len) len = _le;
 			else if (len > _le) len = _le;
-			
 			return write(buf.pos(), len);
 		}
 		return 0;
@@ -511,15 +536,10 @@ public:
 	
 	int pbuf(SockBuf& buf, u32_t from, u32_t len) {
 		u32_t _le = this->len();
-
-		if ((from + len) >= _le)
-			return 0;
-
-		if (len == buf.write(this->pos() + from, len)) {
-			_pos_r += len;
+		if ((from + len) < _le &&
+			len == buf.write(this->pos() + from, len)) {
 			return len;
 		}
-		
 		return 0;
 	}
 	
@@ -570,7 +590,6 @@ public:
 		return w(&v, sizeof(v));
 	}
 	
-	
 	///////////////////////////////////////////////////
 	// read
 	
@@ -588,50 +607,49 @@ public:
 		if (len() >= sizeof(u32_t)) {
 			bytes = p32();
 			if (len() >= (bytes + sizeof(u32_t))) {
-				_pos_r += sizeof(u32_t);
-				
-				u8_t* buf = _ptr + _pos_r;
-				_pos_r += bytes;
-				
-				return buf;
+				_pos_r += sizeof(u32_t) + bytes;
+				return pos() - bytes;
 			}
 		}
 		return 0;
 	}
 	
 	u8_t r8() {
-		if (sizeof(u8_t) > len())
-			return 0;
-
-		u8_t v = p8();
-		_pos_r += sizeof(v);
+		u8_t v = 0;
+		if (len() >= sizeof(v)) {
+			v = pos()[0];
+			_pos_r += sizeof(v);
+		}
 		return v;
 	}
 	
 	u16_t r16() {
-		if (sizeof(u16_t) > len())
-			return 0;
-
-		u16_t v = p16();
-		_pos_r += sizeof(v);
+		u16_t v = 0;
+		if (len() >= sizeof(v)) {
+			memcpy(&v, pos(), sizeof(v));
+			_pos_r += sizeof(v);
+			v = ntohs(v);
+		}
 		return v;
 	}
 	
 	u32_t r32() {
-		if (sizeof(u32_t) > len())
-			return 0;
-
-		u32_t v = p32();
-		_pos_r += sizeof(v);
+		u32_t v = 0;
+		if (len() >= sizeof(v)) {
+			memcpy(&v, pos(), sizeof(v));
+			_pos_r += sizeof(v);
+			v = ntohl(v);
+		}
 		return v;
 	}
 	
 	u64_t r64() {
-		if (sizeof(u64_t) > len())
-			return 0;
-
-		u64_t v = p64();
-		_pos_r += sizeof(v);
+		u64_t v = 0;
+		if (len() >= sizeof(v)) {
+			memcpy(&v, pos(), sizeof(v));
+			_pos_r += sizeof(v);
+			v = ntohll(v);
+		}
 		return v;
 	}
 	
@@ -657,64 +675,25 @@ public:
 		if (len() >= sizeof(u16_t)) {
 			u16_t bytes = p16();
 			if (len() >= (bytes + sizeof(u16_t))) {
-				_pos_r += sizeof(u16_t);
-				
-				u8_t* buf = _ptr + _pos_r;
-				_pos_r += bytes;
-				
-				return (char*)buf;
+				_pos_r += sizeof(u16_t) + bytes;
+				return (char*)pos() - bytes;
 			}
 		}
 		return 0;
-	}
-	
-	SockBuf& skip(u32_t bytes) {
-		if (bytes > len())
-			bytes = len();
-		_pos_r += bytes;
-		return *this;
-	}
-	
-	SockBuf& discard(u32_t bytes) {
-		if (bytes > len())
-			bytes = len();
-		_pos_r += bytes;
-
-		if (_pos_r >= _pos_w) {
-			_pos_w = 0;
-			_pos_r = 0;
-			_ptr[0] = 0;
-			
-			if (_max > SOCKBUF_BLOCK_SIZE) {
-				free(_ptr);
-				_ptr = (u8_t*) malloc(SOCKBUF_BLOCK_SIZE);
-				_max = SOCKBUF_BLOCK_SIZE;
-			}
-		}
-		return *this;
 	}
 
 	///////////////////////////////////////////////////
 	// peek
 	
 	u8_t* p(u32_t bytes) {
-		if (bytes > len())
-			return 0;
-		
-		u8_t* buf = _ptr + _pos_r;
-		
-		return buf;
+		return bytes > len() ? 0 : pos();
 	}
 	
 	u8_t* pl(u32_t& bytes) {
 		if (len() >= sizeof(u32_t)) {
 			bytes = p32();
 			if (len() >= (bytes + sizeof(u32_t))) {
-				_pos_r += sizeof(u32_t);
-				
-				u8_t* buf = _ptr + _pos_r;
-				
-				return buf;
+				return pos() + sizeof(u32_t);
 			}
 		}
 		return 0;
@@ -722,24 +701,37 @@ public:
 	
 	u8_t p8() {
 		u8_t v = 0;
-		memcpy(&v, pos(), sizeof(v));
+		if (len() >= sizeof(v)) {
+			v = pos()[0];
+		}
 		return v;
 	}
 	
 	u16_t p16() {
 		u16_t v = 0;
-		memcpy(&v, pos(), sizeof(v));
-		return ntohs(v);
+		if (len() >= sizeof(v)) {
+			memcpy(&v, pos(), sizeof(v));
+			v = ntohs(v);
+		}
+		return v;
 	}
+	
 	u32_t p32() {
 		u32_t v = 0;
-		memcpy(&v, pos(), sizeof(v));
-		return ntohl(v);
+		if (len() >= sizeof(v)) {
+			memcpy(&v, pos(), sizeof(v));
+			v = ntohl(v);
+		}
+		return v;
 	}
+	
 	u64_t p64() {
 		u64_t v = 0;
-		memcpy(&v, pos(), sizeof(v));
-		return ntohll(v);
+		if (len() >= sizeof(v)) {
+			memcpy(&v, pos(), sizeof(v));
+			v = ntohll(v);
+		}
+		return v;
 	}
 	
 	const char*	ps() {
@@ -761,11 +753,7 @@ public:
 		if (len() >= sizeof(u16_t)) {
 			u16_t bytes = p16();
 			if (len() >= (bytes + sizeof(u16_t))) {
-				_pos_r += sizeof(u16_t);
-				
-				u8_t* buf = _ptr + _pos_r;
-				
-				return (char*)buf;
+				return (char*)pos() + sizeof(u16_t);
 			}
 		}
 		return 0;
@@ -790,8 +778,9 @@ public:
 	static int mylua_discard(lua_State* L);
 	static int mylua_buffer(lua_State* L);
 	static int mylua_length(lua_State* L);
+	static int mylua_index(lua_State* L);
 	static int mylua_gc(lua_State* L);
-	static int mylua_toString(lua_State* L);
+	static int mylua_tostring(lua_State* L);
 	
 	static int mylua_w(lua_State* L);
 	static int mylua_wl(lua_State* L);
@@ -883,10 +872,13 @@ private:
 	
 #if SOCKLIB_TO_LUA
 public:
-	static int mylua_setKey(lua_State* L);
+	static int mylua_setkey(lua_State* L);
 	static int mylua_process(lua_State* L);
 	static int mylua_gc(lua_State* L);
-	static int mylua_toString(lua_State* L);
+	static int mylua_tostring(lua_State* L);
+	#if SOCKLIB_NOCASE
+	static int mylua_index(lua_State* L);
+	#endif
 #endif // SOCKLIB_TO_LUA
 };
 
@@ -907,11 +899,13 @@ u32_t CRC32_build(const void* data, u32_t len, u32_t crc = 0);
 class MD5
 {
 public:
-	static void build(u8_t hash[16], const void* data, u32_t len);
+	MD5() { init(); }
 
 	void init();
 	void update(const u8_t* data, u32_t len);
 	void final(u8_t digest[16]);
+	
+	static void build(u8_t hash[16], const void* data, u32_t len);
 
 private:	
 	u32_t	_state[4];
@@ -924,7 +918,10 @@ public:
 	static int mylua_update(lua_State* L);
 	static int mylua_final(lua_State* L);
 	static int mylua_gc(lua_State* L);
-	static int mylua_toString(lua_State* L);
+	static int mylua_tostring(lua_State* L);
+	#if SOCKLIB_NOCASE
+	static int mylua_index(lua_State* L);
+	#endif
 #endif // SOCKLIB_TO_LUA
 };
 
@@ -939,12 +936,14 @@ static inline void MD5_build(u8_t hash[16], const void* data, u32_t len)
 class SHA1
 {
 public:
-	static void build(u8_t hash[20], const void* data, u32_t len);
+	SHA1() { init(); }
 
 	void init();
 	void update(const u8_t* data, u32_t len);
 	void final(u8_t digest[20]);
 	
+	static void build(u8_t hash[20], const void* data, u32_t len);
+
 private:
 	u32_t	_state[5];
 	u32_t	_count[2];
@@ -956,7 +955,10 @@ public:
 	static int mylua_update(lua_State* L);
 	static int mylua_final(lua_State* L);
 	static int mylua_gc(lua_State* L);
-	static int mylua_toString(lua_State* L);
+	static int mylua_tostring(lua_State* L);
+	#if SOCKLIB_NOCASE
+	static int mylua_index(lua_State* L);
+	#endif
 #endif // SOCKLIB_TO_LUA
 };
 
@@ -988,14 +990,14 @@ public:
 	static std::string	urldec(const std::string& url);
 
 #if SOCKLIB_TO_LUA
-#if SOCKLIB_ALG
+	#if SOCKLIB_ALG
 	static int mylua_crc32(lua_State* L);
 	static int mylua_rc4(lua_State* L);
 	static int mylua_md5(lua_State* L);
 	static int mylua_sha1(lua_State* L);
 	static int mylua_b64enc(lua_State* L);
 	static int mylua_b64dec(lua_State* L);
-#endif // SOCKLIB_ALG
+	#endif // SOCKLIB_ALG
 
 	static int mylua_u32op(lua_State* L);
 	static int mylua_tick(lua_State* L);
@@ -1010,6 +1012,10 @@ public:
 	static int mylua_ntohl(lua_State* L);
 	static int mylua_htonll(lua_State* L);
 	static int mylua_ntohll(lua_State* L);
+
+	#if SOCKLIB_NOCASE
+	static int mylua_index(lua_State* L);
+	#endif
 #endif // SOCKLIB_TO_LUA
 };
 

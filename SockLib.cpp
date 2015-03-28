@@ -8,9 +8,20 @@
 #include "SockLib.h"
 
 #ifdef _WIN32
-#include <time.h>
+	#include <time.h>
+	#define StrCmpI					::stricmp
+	#define StrCmpNI				::strnicmp
+	#pragma comment(lib, "ws2_32.lib")
 #else
-#include <sys/time.h>
+	#include <sys/time.h>
+	#define StrCmpI					::strcasecmp
+	#define StrCmpNI				::strncasecmp
+#endif
+
+#if SOCKLIB_NOCASE
+	#define NameStrCmp				StrCmpI
+#else
+	#define NameStrCmp				strcmp
 #endif
 
 SOCKLIB_NAMESPACE_BEGIN
@@ -30,13 +41,13 @@ timeval SockLib::_tv;
 static std::string SOCKLIB_TCP 	= SOCKLIB_NAME ".tcp";
 static std::string SOCKLIB_UDP 	= SOCKLIB_NAME ".udp";
 static std::string SOCKLIB_BUF 	= SOCKLIB_NAME ".buf";
+static std::string SOCKLIB_UTIL = SOCKLIB_NAME ".util";
 
 #if SOCKLIB_TO_LUA
 LuaHelper::Objects	LuaHelper::_objs;
 lua_State* 			SockLib::_luaState = 0;
 
 #if SOCKLIB_ALG
-//static std::string SOCKLIB_UTIL = SOCKLIB_NAME ".util";
 static std::string SOCKLIB_RC4 	= SOCKLIB_NAME ".rc4";
 static std::string SOCKLIB_MD5 	= SOCKLIB_NAME ".md5";
 static std::string SOCKLIB_SHA1 = SOCKLIB_NAME ".sha1";
@@ -319,7 +330,10 @@ static const luaL_Reg SockLib_Reg[] = {
 	{ "udp", 		SockLib::mylua_udp },
 	{ "buf", 		SockLib::mylua_buf },
 	{ "poll", 		SockLib::mylua_poll },
-	{ NULL, NULL }
+	#if SOCKLIB_NOCASE
+	{ "__index", 	SockLib::mylua_index },
+	#endif
+	{ NULL, 		NULL }
 };
 
 static const luaL_Reg SockTcp_Reg[] = {
@@ -330,21 +344,26 @@ static const luaL_Reg SockTcp_Reg[] = {
 	{ "send", 		SockTcp::mylua_send },
 	{ "recv", 		SockTcp::mylua_recv },
 	{ "accept", 	SockTcp::mylua_close },
-	{ "recvBuf", 	SockTcp::mylua_recvBuf },
-	{ "sendBuf", 	SockTcp::mylua_sendBuf },
-	{ "onEvent", 	SockTcp::mylua_onEvent },
+//	{ "inbuf", 		SockTcp::mylua_inbuf },		// __index do it
+//	{ "outbuf", 	SockTcp::mylua_outbuf },	// __index do it
+	{ "onevent", 	SockTcp::mylua_onevent },
+	{ "setopt", 	SockTcp::mylua_setopt },
+//	{ "__eq", 		SockTcp::mylua_eq },
+	{ "__index", 	SockTcp::mylua_index },
 	{ "__gc", 		SockTcp::mylua_gc },
-	{ "__tostring", SockTcp::mylua_toString },
+	{ "__tostring", SockTcp::mylua_tostring },
 	{ NULL, 		NULL }
 };
 
 static const luaL_Reg SockUdp_Reg[] = {
 //	{ "bind", 		SockUdp::mylua_bind },
-	{ "sendto", 	SockUdp::mylua_sendTo },
-	{ "recvfrom", 	SockUdp::mylua_recvFrom },
+	{ "sendto", 	SockUdp::mylua_sendto },
+	{ "recvfrom", 	SockUdp::mylua_recvfrom },
 	{ "close", 		SockUdp::mylua_close },
+	{ "onevent", 	SockUdp::mylua_onevent },
+	{ "setopt", 	SockUdp::mylua_setopt },
 	{ "__gc", 		SockUdp::mylua_gc },
-	{ "__tostring", SockUdp::mylua_toString },
+	{ "__tostring", SockUdp::mylua_tostring },
 	{ NULL, 		NULL }
 };
 
@@ -355,8 +374,8 @@ static const luaL_Reg SockBuf_Reg[] = {
 	
 	{ "sub", 		SockBuf::mylua_sub },
 
-	{ "buffer", 	SockBuf::mylua_buffer },
-	{ "length", 	SockBuf::mylua_length },
+//	{ "buffer", 	SockBuf::mylua_buffer },	// __index do it
+//	{ "length", 	SockBuf::mylua_length },	// __index do it
 
 	{ "w", 			SockBuf::mylua_w },
 	{ "wl", 		SockBuf::mylua_wl },
@@ -385,20 +404,21 @@ static const luaL_Reg SockBuf_Reg[] = {
 	{ "p32", 		SockBuf::mylua_p32 },
 	{ "p64", 		SockBuf::mylua_p64 },
 
+	{ "__index", 	SockBuf::mylua_index },
 	{ "__gc", 		SockBuf::mylua_gc },
-	{ "__tostring", SockBuf::mylua_toString },
+	{ "__tostring", SockBuf::mylua_tostring },
 	{ NULL, 		NULL }
 };
 
 static const luaL_Reg SockUtil_Reg[] = {
-#if SOCKLIB_ALG
+	#if SOCKLIB_ALG
 	{ "crc32", 		Util::mylua_crc32 },
 	{ "rc4", 		Util::mylua_rc4 },
 	{ "md5", 		Util::mylua_md5 },
 	{ "sha1", 		Util::mylua_sha1 },
 	{ "b64enc", 	Util::mylua_b64enc },
 	{ "b64dec", 	Util::mylua_b64dec },
-#endif // SOCKLIB_ALG
+	#endif // SOCKLIB_ALG
 
 	{ "u32op", 		Util::mylua_u32op },
 	{ "tick",		Util::mylua_tick },
@@ -413,15 +433,23 @@ static const luaL_Reg SockUtil_Reg[] = {
 	{ "htonll",		Util::mylua_htonll },
 	{ "ntohll",		Util::mylua_ntohll },
 
+	#if SOCKLIB_NOCASE
+	{ "__index", 	Util::mylua_index },
+	#endif
+
 	{ NULL, 		NULL }
 };
 
 #if SOCKLIB_ALG
 static const luaL_Reg AlgRC4_Reg[] = {
-	{ "setKey", 	RC4::mylua_setKey },
+	{ "setkey", 	RC4::mylua_setkey },
 	{ "process", 	RC4::mylua_process },
 	{ "__gc", 		RC4::mylua_gc },
-	{ "__tostring", RC4::mylua_toString },
+	{ "__tostring", RC4::mylua_tostring },
+
+	#if SOCKLIB_NOCASE
+	{ "__index", 	RC4::mylua_index },
+	#endif
 	{ NULL, 		NULL }
 };
 
@@ -430,7 +458,11 @@ static const luaL_Reg AlgMD5_Reg[] = {
 	{ "update", 	MD5::mylua_update },
 	{ "final", 		MD5::mylua_final },
 	{ "__gc", 		MD5::mylua_gc },
-	{ "__tostring", MD5::mylua_toString },
+	{ "__tostring", MD5::mylua_tostring },
+
+	#if SOCKLIB_NOCASE
+	{ "__index", 	MD5::mylua_index },
+	#endif
 	{ NULL, 		NULL }
 };
 
@@ -439,10 +471,39 @@ static const luaL_Reg AlgSHA1_Reg[] = {
 	{ "update", 	SHA1::mylua_update },
 	{ "final", 		SHA1::mylua_final },
 	{ "__gc", 		SHA1::mylua_gc },
-	{ "__tostring", SHA1::mylua_toString },
+	{ "__tostring", SHA1::mylua_tostring },
+
+	#if SOCKLIB_NOCASE
+	{ "__index", 	SHA1::mylua_index },
+	#endif
 	{ NULL, 		NULL }
 };
 #endif // SOCKLIB_ALG
+
+#define SOCKEVT_CONNECT		"connect"
+#define SOCKEVT_ACCEPT		"accept"
+#define SOCKEVT_ERROR		"error"
+#define SOCKEVT_RECV		"recv"
+#define SOCKEVT_SEND		"send"
+#define SOCKEVT_CLOSE		"close"
+
+#define SOCKOPT_BLOCKING	"blocking"
+#define SOCKOPT_SENDBUFSIZE	"sendbufsize"
+#define SOCKOPT_RECVBUFSIZE	"recvbufsize"
+#define SOCKOPT_SENDTIMEOUT	"sendtimeout"
+#define SOCKOPT_RECVTIMEOUT	"recvtimeout"
+#define SOCKOPT_REUSEADDR	"reuseaddr"
+
+static int g_mylua_index(lua_State* L, const char* key, const luaL_Reg* walk)
+{
+	for (const luaL_Reg* p = walk; p->name; p++) {
+		if (0 == NameStrCmp(p->name, key)) {
+			lua_pushcclosure(L, p->func, 0);
+			return 1;
+		}
+	}
+	return 0;
+}
 
 //----------------------------------------------------------------------------
 //
@@ -458,46 +519,97 @@ int SockLib::mylua_regAs(lua_State* L, const char* libName)
 	SOCKLIB_TCP = std::string(libName) + ".tcp";
 	SOCKLIB_UDP = std::string(libName) + ".udp";
 	SOCKLIB_BUF = std::string(libName) + ".buf";
+	SOCKLIB_UTIL = std::string(libName) + ".util";
 
 	#if SOCKLIB_ALG
-//	SOCKLIB_UTIL = std::string(libName) + ".util";
 	SOCKLIB_RC4 = std::string(libName) + ".rc4";
 	SOCKLIB_MD5 = std::string(libName) + ".md5";
 	SOCKLIB_SHA1 = std::string(libName) + ".sha1";
 	#endif // SOCKLIB_ALG
 
 	// create SockLib
-#if LUA_VERSION_NUM == 501
+	#if LUA_VERSION_NUM == 501
 	luaL_register(L, _libName.c_str(), SockLib_Reg);
-#else
+	#else
 	#error "only tested on lua5.1"
 	luaL_newlib(L, SockLib_Reg);
-#endif
+	#endif
 
+	#if SOCKLIB_NOCASE
+	LuaHelper::newMetatable(L, _libName.c_str(), SockLib_Reg);
+	LuaHelper::newMetatable(L, SOCKLIB_UTIL, SockUtil_Reg);
+	#endif
 	LuaHelper::newMetatable(L, SOCKLIB_TCP, SockTcp_Reg);
 	LuaHelper::newMetatable(L, SOCKLIB_UDP, SockUdp_Reg);
 	LuaHelper::newMetatable(L, SOCKLIB_BUF, SockBuf_Reg);
 
-#if SOCKLIB_ALG
-//	LuaHelper::newMetatable(L, SOCKLIB_UTIL, SockUtil_Reg);
+	#if SOCKLIB_ALG
 	LuaHelper::newMetatable(L, SOCKLIB_RC4, AlgRC4_Reg);
 	LuaHelper::newMetatable(L, SOCKLIB_MD5, AlgMD5_Reg);
 	LuaHelper::newMetatable(L, SOCKLIB_SHA1, AlgSHA1_Reg);
+	#endif // SOCKLIB_ALG
 	
-	// socklib.util
 	lua_getglobal(L, _libName.c_str());
+	
+	#if SOCKLIB_NOCASE
+	luaL_getmetatable(L, _libName.c_str());
+	lua_setmetatable(L, -2);
+	#endif
+	
+	// socklib._VERSION
+	lua_pushfstring(L, "%s v%s, 2015/03/28", _libName.c_str(), SOCKLIB_VER);
+	lua_setfield(L, -2, "_VERSION");
+
+	// socklib.util
 	lua_newtable(L);
+	#if SOCKLIB_NOCASE
+	luaL_getmetatable(L, SOCKLIB_UTIL.c_str());
+	lua_setmetatable(L, -2);
+	#endif
 	for (const luaL_Reg* p = SockUtil_Reg; p->name; p++) {
 		lua_pushcclosure(L, p->func, 0);
 		lua_setfield(L, -2, p->name);
 	}
 	lua_setfield(L, -2, "util");
 	
-	// socklib._VERSION
-	lua_pushfstring(L, "%s v%s, 2015/03/28", _libName.c_str(), SOCKLIB_VER);
-	lua_setfield(L, -2, "_VERSION");
-	
-#endif // SOCKLIB_ALG
+	struct KeyVal {
+		const char* key;
+		const char* val;
+	};
+
+	// socklib.EVT
+	lua_newtable(L);
+	static const KeyVal evts[] = {
+		{ "CONNECT", 	SOCKEVT_CONNECT },
+		{ "ACCEPT", 	SOCKEVT_ACCEPT },
+		{ "ERROR", 		SOCKEVT_ERROR },
+		{ "RECV", 		SOCKEVT_RECV },
+		{ "SEND", 		SOCKEVT_SEND },
+		{ "CLOSE", 		SOCKEVT_CLOSE },
+		{ NULL, 		NULL },
+	};
+	for (const KeyVal* p = evts; p->key; p++) {
+		lua_pushstring(L, p->val);
+		lua_setfield(L, -2, p->key);
+	}
+	lua_setfield(L, -2, "EVT");
+
+	// socklib.OPT
+	lua_newtable(L);
+	static const KeyVal opts[] = {
+		{ "BLOCKING", 		SOCKOPT_BLOCKING },
+		{ "SENDBUFSIZE", 	SOCKOPT_SENDBUFSIZE },
+		{ "RECVBUFSIZE", 	SOCKOPT_RECVBUFSIZE },
+		{ "SENDTIMEOUT", 	SOCKOPT_SENDTIMEOUT },
+		{ "RECVTIMEOUT", 	SOCKOPT_RECVTIMEOUT },
+		{ "REUSEADDR", 		SOCKOPT_REUSEADDR },
+		{ NULL, 			NULL },
+	};
+	for (const KeyVal* p = opts; p->key; p++) {
+		lua_pushstring(L, p->val);
+		lua_setfield(L, -2, p->key);
+	}
+	lua_setfield(L, -2, "OPT");
 
 	return 1;
 }
@@ -563,6 +675,33 @@ int SockLib::mylua_poll(lua_State* L)
 	}
 	return 0;
 }
+
+#if SOCKLIB_NOCASE
+//----------------------------------------------------------------------------
+//
+int SockLib::mylua_index(lua_State* L)
+{
+	const char* key = luaL_checkstring(L, 2);
+
+#if SOCKLIB_DEBUG
+	std::cout << "SockLib::mylua_index(" << key << ")" << std::endl;
+#endif
+
+	if (int r = g_mylua_index(L, key, SockLib_Reg))
+		return r;
+
+	if (0 == NameStrCmp(key, "util")) {
+		lua_pushstring(L, "util");
+		lua_rawget(L, 1);
+		return 1;
+	}
+
+	lua_pushvalue(L, 2);
+	lua_rawget(L, 1);
+//	lua_pushnil(L);
+	return 1;
+}
+#endif // SOCKLIB_NOCASE
 
 #endif // SOCKLIB_TO_LUA
 
@@ -892,7 +1031,10 @@ void SockTcp::onConnect(bool ok)
 	if (_mylua_onConnect) {
 		lua_State* L = SockLib::luaState();
 		lua_rawgeti(L, LUA_REGISTRYINDEX, _mylua_onConnect);
-		lua_newtable(L);
+		
+		LuaHelper::bind(L, SOCKLIB_TCP, this);
+		
+//		lua_newtable(L);
 
 		int result = lua_pcall(L, 1, 0, 0);
 		if (0 != result) {
@@ -1036,17 +1178,38 @@ int SockTcp::mylua_listen(lua_State* L)
 		logs = (int) luaL_checkinteger(L, 2);
 	if (lua_gettop(L) >= 3)
 		ip = luaL_checkstring(L, 3);
-	
-	if (ip && ip[0])
-		_this->bind(ip, port);
-	else
-		_this->bind(port);
 
-	int r = _this->listen(logs);
+	int r;
 	
-	lua_pushinteger(L, r);
+	if (ip && ip[0]) {
+		r = _this->bind(ip, port);
 
-	return 1;
+		if (SOCKET_ERROR == r) {
+			lua_pushboolean(L, false);
+			lua_pushfstring(L, "bind %s:%d failed", ip, port);
+			return 2;
+		}
+	} else {
+		r = _this->bind(port);
+
+		if (SOCKET_ERROR == r) {
+			lua_pushboolean(L, false);
+			lua_pushfstring(L, "bind port %d failed", port);
+			return 2;
+		}
+	}
+
+	r = _this->listen(logs);
+	
+	if (SOCKET_ERROR == r) {
+		lua_pushboolean(L, false);
+		lua_pushfstring(L, "listen in port %d failed", port);
+		return 2;
+	} else {
+		lua_pushboolean(L, true);
+		lua_pushstring(L, "listen ok");
+		return 2;
+	}
 }
 
 //----------------------------------------------------------------------------
@@ -1058,7 +1221,7 @@ int SockTcp::mylua_accept(lua_State* L)
 
 //----------------------------------------------------------------------------
 //
-int SockTcp::mylua_recvBuf(lua_State* L)
+int SockTcp::mylua_inbuf(lua_State* L)
 {
 	SockTcp* _this = mylua_this(L);
 	return LuaHelper::bind<SockBuf>(L, SOCKLIB_BUF, _this->recvBuf());
@@ -1066,7 +1229,7 @@ int SockTcp::mylua_recvBuf(lua_State* L)
 
 //----------------------------------------------------------------------------
 //
-int SockTcp::mylua_sendBuf(lua_State* L)
+int SockTcp::mylua_outbuf(lua_State* L)
 {
 	SockTcp* _this = mylua_this(L);
 	return LuaHelper::bind<SockBuf>(L, SOCKLIB_BUF, _this->sendBuf());
@@ -1127,26 +1290,105 @@ int SockTcp::mylua_close(lua_State* L)
 
 //----------------------------------------------------------------------------
 //
-int SockTcp::mylua_onEvent(lua_State* L)
+static int SockRef_mylua_setopt(lua_State* L, SockRef* _this)
+{
+	int r = -1, n;
+	const char* key = luaL_checkstring(L, 2);
+	
+	if (0 == StrCmpI(key, SOCKOPT_BLOCKING)) {
+		n = lua_gettop(L) >= 3 ? luaL_optint(L, 3, 1) : 1;
+		r = _this->setBroadcast(n != 0);
+	} else if (0 == StrCmpI(key, SOCKOPT_REUSEADDR)) {
+		n = lua_gettop(L) >= 3 ? luaL_optint(L, 3, 1) : 1;
+		r = _this->setReuseAddr(n != 0);
+	} else if (lua_gettop(L) >= 3 && lua_isnumber(L, 3)) {
+		n = luaL_optint(L, 3, 0);
+		
+		if (0 == StrCmpI(key, SOCKOPT_SENDBUFSIZE)) {
+			r = _this->setSendBufferSize(n);
+		} else if (0 == StrCmpI(key, SOCKOPT_RECVBUFSIZE)) {
+			r = _this->setRecvBufferSize(n);
+		} else if (0 == StrCmpI(key, SOCKOPT_SENDTIMEOUT)) {
+			r = _this->setSendTimeout(n);
+		} else if (0 == StrCmpI(key, SOCKOPT_RECVTIMEOUT)) {
+			r = _this->setRecvTimeout(n);
+		} else {
+			luaL_error(L, "setopt(BAD_KEY=%s)", key);
+			return 1;
+		}
+	} else {
+		luaL_error(L, "setopt(KEY=%s, bad params)", key);
+		return 1;
+	}
+	
+#if SOCKLIB_DEBUG
+	std::cout << "setopt(" << key << ", " << n << ")" << std::endl;
+#endif
+	
+	lua_pushboolean(L, r != SOCKET_ERROR);
+	
+	return 1;
+}
+
+//----------------------------------------------------------------------------
+//
+int SockTcp::mylua_setopt(lua_State* L)
+{
+	SockTcp* _this = mylua_this(L);
+	return SockRef_mylua_setopt(L, _this);
+}
+
+//----------------------------------------------------------------------------
+//
+int SockTcp::mylua_onevent(lua_State* L)
 {
 	SockTcp* _this = mylua_this(L);
 	
 	const char* name = luaL_checkstring(L, 2);
 	int handler = luaL_ref(L, LUA_REGISTRYINDEX);
 
-	if (strcmp("connect", name) == 0) {
+	if (StrCmpI(SOCKEVT_CONNECT, name) == 0) {
 		_this->_mylua_onConnect = handler;
-	} else if (strcmp("recv", name) == 0) {
+	} else if (StrCmpI(SOCKEVT_RECV, name) == 0) {
 		_this->_mylua_onRecv = handler;
-	} else if (strcmp("send", name) == 0) {
+	} else if (StrCmpI(SOCKEVT_SEND, name) == 0) {
 		_this->_mylua_onSend= handler;
-	} else if (strcmp("close", name) == 0) {
+	} else if (StrCmpI(SOCKEVT_CLOSE, name) == 0) {
 		_this->_mylua_onClose = handler;
-	} else if (strcmp("accept", name) == 0) {
+	} else if (StrCmpI(SOCKEVT_ACCEPT, name) == 0) {
 		_this->_mylua_onAccept= handler;
 	} else {
 		luaL_error(L, "%s:onEevent(%s) not support!", SOCKLIB_TCP.c_str(), name);
 	}
+
+#if SOCKLIB_DEBUG
+	std::cout << "SockTcp::mylua_onevent(" << name << ")" << std::endl;
+#endif
+	
+	return 1;
+}
+
+//----------------------------------------------------------------------------
+//
+int SockTcp::mylua_index(lua_State* L)
+{
+//	SockTcp* _this = mylua_this(L);
+	const char* key = luaL_checkstring(L, 2);
+
+#if SOCKLIB_DEBUG
+	std::cout << "SockTcp::mylua_index(" << key << ")" << std::endl;
+#endif
+
+	if (int r = g_mylua_index(L, key, SockTcp_Reg))
+		return r;
+
+	if (0 == NameStrCmp(key, "inbuf")) {
+		return mylua_inbuf(L);
+	} else if (0 == NameStrCmp(key, "outbuf")) {
+		return mylua_outbuf(L);
+	}
+	
+	lua_pushnil(L);
 	
 	return 1;
 }
@@ -1175,7 +1417,7 @@ int SockTcp::mylua_gc(lua_State* L)
 
 //----------------------------------------------------------------------------
 //
-int SockTcp::mylua_toString(lua_State* L)
+int SockTcp::mylua_tostring(lua_State* L)
 {
 	SockTcp* _this = mylua_this(L);
 	
@@ -1299,7 +1541,7 @@ SockUdp* SockUdp::mylua_this(lua_State* L, int idx)
 
 //----------------------------------------------------------------------------
 //
-int SockUdp::mylua_sendTo(lua_State* L)
+int SockUdp::mylua_sendto(lua_State* L)
 {
 	SockUdp* _this = mylua_this(L);
 	
@@ -1315,7 +1557,7 @@ int SockUdp::mylua_sendTo(lua_State* L)
 
 //----------------------------------------------------------------------------
 //
-int SockUdp::mylua_recvFrom(lua_State* L)
+int SockUdp::mylua_recvfrom(lua_State* L)
 {
 	SockUdp* _this = mylua_this(L);
 	_this->recvFrom();
@@ -1333,6 +1575,36 @@ int SockUdp::mylua_close(lua_State* L)
 	_this->close();
 	
 	return 0;
+}
+
+//----------------------------------------------------------------------------
+//
+int SockUdp::mylua_onevent(lua_State* L)
+{
+	SockUdp* _this = mylua_this(L);
+	
+	const char* name = luaL_checkstring(L, 2);
+	int handler = luaL_ref(L, LUA_REGISTRYINDEX);
+
+	if (StrCmpI(SOCKEVT_RECV, name) == 0) {
+		_this->_mylua_onRecv = handler;
+	} else if (StrCmpI(SOCKEVT_SEND, name) == 0) {
+		_this->_mylua_onSend= handler;
+	} else if (StrCmpI(SOCKEVT_CLOSE, name) == 0) {
+		_this->_mylua_onClose = handler;
+	} else {
+		luaL_error(L, "%s:onevent(%s) not support!", SOCKLIB_TCP.c_str(), name);
+	}
+	
+	return 0;
+}
+
+//----------------------------------------------------------------------------
+//
+int SockUdp::mylua_setopt(lua_State* L)
+{
+	SockUdp* _this = mylua_this(L);
+	return SockRef_mylua_setopt(L, _this);
 }
 
 //----------------------------------------------------------------------------
@@ -1359,11 +1631,29 @@ int SockUdp::mylua_gc(lua_State* L)
 
 //----------------------------------------------------------------------------
 //
-int SockUdp::mylua_toString(lua_State* L)
+int SockUdp::mylua_tostring(lua_State* L)
 {
 	SockUdp* _this = mylua_this(L);
 	
 	lua_pushfstring(L, "%s{fd=%d}", SOCKLIB_UDP.c_str(), _this->fd());
+	
+	return 1;
+}
+
+//----------------------------------------------------------------------------
+//
+int SockUdp::mylua_index(lua_State* L)
+{
+	const char* key = luaL_checkstring(L, 2);
+
+#if SOCKLIB_DEBUG
+	std::cout << "SockUdp::mylua_index(" << key << ")" << std::endl;
+#endif
+
+	if (int r = g_mylua_index(L, key, SockUdp_Reg))
+		return r;
+	
+	lua_pushnil(L);
 	
 	return 1;
 }
@@ -1373,6 +1663,8 @@ int SockUdp::mylua_toString(lua_State* L)
 ///////////////////////////////////////////////////////////////////////////////
 // SockBuf
 //
+#define SOCKBUF_BLOCK_SIZE	(1024 * 4)
+
 SockBuf::SockBuf()
 	: _ptr(0), _max(0), _pos_r(0), _pos_w(0)
 {
@@ -1456,6 +1748,28 @@ void SockBuf::reset()
 	_max = _pos_r = _pos_w = 0;
 
 //	std::cout << "SockBuf::reset()" << std::endl;
+}
+
+//----------------------------------------------------------------------------
+//
+SockBuf& SockBuf::discard(u32_t bytes)
+{
+	if (bytes > len())
+		bytes = len();
+	_pos_r += bytes;
+
+	if (_pos_r >= _pos_w) {
+		_pos_w = 0;
+		_pos_r = 0;
+		_ptr[0] = 0;
+		
+		if (_max > SOCKBUF_BLOCK_SIZE) {
+			free(_ptr);
+			_ptr = (u8_t*) malloc(SOCKBUF_BLOCK_SIZE);
+			_max = SOCKBUF_BLOCK_SIZE;
+		}
+	}
+	return *this;
 }
 
 #if SOCKLIB_TO_LUA
@@ -1848,10 +2162,14 @@ int SockBuf::mylua_buffer(lua_State* L)
 {
 	SockBuf* _this = mylua_this(L);
 	
-	lua_pushlightuserdata(L, _this->pos());
-//	lua_pushinteger(L, _this->len());
-	
-	return 1;
+	if (lua_gettop(L) > 0) {
+		lua_pushlightuserdata(L, _this->pos());
+		lua_pushinteger(L, _this->len());
+		return 2;
+	} else {
+		lua_pushlstring(L, (const char*)_this->pos(), (size_t)_this->len());
+		return 1;
+	}
 }
 
 //----------------------------------------------------------------------------
@@ -1862,6 +2180,31 @@ int SockBuf::mylua_length(lua_State* L)
 	
 	lua_pushinteger(L, _this->len());
 //	lua_pushlightuserdata(L, _this->pos());
+	
+	return 1;
+}
+
+//----------------------------------------------------------------------------
+//
+int SockBuf::mylua_index(lua_State* L)
+{
+//	SockTcp* _this = mylua_this(L);
+	const char* key = luaL_checkstring(L, 2);
+
+#if SOCKLIB_DEBUG
+	std::cout << "SockBuf::mylua_index(" << key << ")" << std::endl;
+#endif
+
+	if (int r = g_mylua_index(L, key, SockBuf_Reg))
+		return r;
+
+	if (0 == NameStrCmp(key, "buffer") || 0 == NameStrCmp(key, "pos") || 0 == NameStrCmp(key, "buf")) {
+		return mylua_buffer(L);
+	} else if (0 == NameStrCmp(key, "length") || 0 == NameStrCmp(key, "len")) {
+		return mylua_length(L);
+	}
+
+	lua_pushnil(L);
 	
 	return 1;
 }
@@ -1889,7 +2232,7 @@ int SockBuf::mylua_gc(lua_State* L)
 
 //----------------------------------------------------------------------------
 //
-int SockBuf::mylua_toString(lua_State* L)
+int SockBuf::mylua_tostring(lua_State* L)
 {
 	SockBuf* _this = mylua_this(L);
 	
@@ -1994,7 +2337,7 @@ u32_t CRC32_build(const void* data, u32_t len, u32_t crc)
 //
 
 #if SOCKLIB_TO_LUA
-int RC4::mylua_setKey(lua_State* L)
+int RC4::mylua_setkey(lua_State* L)
 {
 	RC4* _this = LuaHelper::get<RC4>(L, SOCKLIB_RC4, 1);
 	
@@ -2074,7 +2417,7 @@ int RC4::mylua_gc(lua_State* L)
 	return 0;
 }
 
-int RC4::mylua_toString(lua_State* L)
+int RC4::mylua_tostring(lua_State* L)
 {
 //	RC4* _this = LuaHelper::get<RC4>(L, SOCKLIB_RC4, 1);
 	
@@ -2082,6 +2425,26 @@ int RC4::mylua_toString(lua_State* L)
 	
 	return 1;
 }
+
+#if SOCKLIB_NOCASE
+//----------------------------------------------------------------------------
+//
+int RC4::mylua_index(lua_State* L)
+{
+	const char* key = luaL_checkstring(L, 2);
+
+#if SOCKLIB_DEBUG
+	std::cout << "RC4::mylua_index(" << key << ")" << std::endl;
+#endif
+
+	if (int r = g_mylua_index(L, key, AlgRC4_Reg))
+		return r;
+	
+	lua_pushnil(L);
+	return 1;
+}
+#endif // SOCKLIB_NOCASE
+
 #endif // SOCKLIB_TO_LUA
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -2361,18 +2724,18 @@ int MD5::mylua_final(lua_State* L)
 	
 	const char* type = lua_gettop(L) > 1 ? luaL_checkstring(L, 2) : "hex";
 	
-	if (!type || !type[0] || 0 == strcmp("hex", type)) {
+	if (!type || !type[0] || 0 == StrCmpI("hex", type)) {
 		char hex[128];
 		for (int i = 0; i < 16; ++i)
 			sprintf(hex + i * 2, "%02x", hash[i]);
 		lua_pushstring(L, hex);
 		return 1;
-	} else if (0 == strcmp("buf", type)) {
+	} else if (0 == StrCmpI("buf", type)) {
 		SockBuf* buf = new SockBuf();
 		LuaHelper::add(buf);
 		buf->w(hash, 16);
 		return LuaHelper::bind<SockBuf>(L, SOCKLIB_BUF, buf);
-	} else if (0 == strcmp("bin", type)) {
+	} else if (0 == StrCmpI("bin", type)) {
 		lua_pushlstring(L, (char*)hash, 16);
 		return 1;
 	}
@@ -2399,7 +2762,7 @@ int MD5::mylua_gc(lua_State* L)
 	return 0;
 }
 
-int MD5::mylua_toString(lua_State* L)
+int MD5::mylua_tostring(lua_State* L)
 {
 //	MD5* _this = LuaHelper::get<MD5>(L, SOCKLIB_MD5, 1);
 	
@@ -2407,6 +2770,26 @@ int MD5::mylua_toString(lua_State* L)
 	
 	return 1;
 }
+
+#if SOCKLIB_NOCASE
+//----------------------------------------------------------------------------
+//
+int MD5::mylua_index(lua_State* L)
+{
+	const char* key = luaL_checkstring(L, 2);
+
+#if SOCKLIB_DEBUG
+	std::cout << "MD5::mylua_index(" << key << ")" << std::endl;
+#endif
+
+	if (int r = g_mylua_index(L, key, AlgMD5_Reg))
+		return r;
+	
+	lua_pushnil(L);
+	return 1;
+}
+#endif // SOCKLIB_NOCASE
+
 #endif // SOCKLIB_TO_LUA
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -2596,18 +2979,18 @@ int SHA1::mylua_final(lua_State* L)
 	
 	const char* type = lua_gettop(L) > 1 ? luaL_checkstring(L, 2) : "hex";
 	
-	if (!type || !type[0] || 0 == strcmp("hex", type)) {
+	if (!type || !type[0] || 0 == StrCmpI("hex", type)) {
 		char hex[128];
 		for (int i = 0; i < 20; ++i)
 			sprintf(hex + i * 2, "%02x", hash[i]);
 		lua_pushstring(L, hex);
 		return 1;
-	} else if (0 == strcmp("buf", type)) {
+	} else if (0 == StrCmpI("buf", type)) {
 		SockBuf* buf = new SockBuf();
 		LuaHelper::add(buf);
 		buf->w(hash, 20);
 		return LuaHelper::bind<SockBuf>(L, SOCKLIB_BUF, buf);
-	} else if (0 == strcmp("bin", type)) {
+	} else if (0 == StrCmpI("bin", type)) {
 		lua_pushlstring(L, (char*)hash, 20);
 		return 1;
 	}
@@ -2634,7 +3017,7 @@ int SHA1::mylua_gc(lua_State* L)
 	return 0;
 }
 
-int SHA1::mylua_toString(lua_State* L)
+int SHA1::mylua_tostring(lua_State* L)
 {
 //	SHA1* _this = LuaHelper::get<SHA1>(L, SOCKLIB_SHA1, 1);
 	
@@ -2642,6 +3025,26 @@ int SHA1::mylua_toString(lua_State* L)
 	
 	return 1;
 }
+
+#if SOCKLIB_NOCASE
+//----------------------------------------------------------------------------
+//
+int SHA1::mylua_index(lua_State* L)
+{
+	const char* key = luaL_checkstring(L, 2);
+
+#if SOCKLIB_DEBUG
+	std::cout << "SHA1::mylua_index(" << key << ")" << std::endl;
+#endif
+
+	if (int r = g_mylua_index(L, key, AlgSHA1_Reg))
+		return r;
+	
+	lua_pushnil(L);
+	return 1;
+}
+#endif // SOCKLIB_NOCASE
+
 #endif // SOCKLIB_TO_LUA
 
 
@@ -3124,8 +3527,15 @@ int Util::mylua_crc32(lua_State* L)
 int Util::mylua_rc4(lua_State* L)
 {
 	if (lua_gettop(L) == 0) {
+		// @LUA: local obj = socklib.rc4()
 		return LuaHelper::create<RC4>(L, SOCKLIB_RC4);
+	} else if (lua_gettop(L) == 1) {
+		// @LUA: local obj = socklib.rc4(key)
+		const char* key = luaL_checkstring(L, 1);
+		return LuaHelper::create<RC4>(L, SOCKLIB_RC4, (const u8_t*)key, (u32_t)strlen(key));
 	}
+	
+	// @LUA: local func = socklib.rc4(key, ...)
 	
 	u32_t len = 0;
 	
@@ -3176,8 +3586,11 @@ int Util::mylua_rc4(lua_State* L)
 int Util::mylua_md5(lua_State* L)
 {
 	if (lua_gettop(L) == 0) {
+		// @LUA: local obj = socklib.md5()
 		return LuaHelper::create<MD5>(L, SOCKLIB_MD5);
 	}
+	
+	// @LUA: local func = socklib.md5(...)
 	
 	u8_t hash[16] = { 0 };
 	u32_t len = 0;
@@ -3218,8 +3631,11 @@ int Util::mylua_md5(lua_State* L)
 int Util::mylua_sha1(lua_State* L)
 {
 	if (lua_gettop(L) == 0) {
+		// @LUA: local obj = socklib.sha1()
 		return LuaHelper::create<SHA1>(L, SOCKLIB_SHA1);
 	}
+	
+	// @LUA: local func = socklib.md5(...)
 	
 	u8_t hash[20] = { 0 };
 	u32_t len = 0;
@@ -3311,6 +3727,26 @@ int Util::mylua_b64dec(lua_State* L)
 }
 
 #endif // SOCKLIB_ALG
+
+#if SOCKLIB_NOCASE
+//----------------------------------------------------------------------------
+//
+int Util::mylua_index(lua_State* L)
+{
+	const char* key = luaL_checkstring(L, 2);
+
+#if SOCKLIB_DEBUG
+	std::cout << "Util::mylua_index(" << key << ")" << std::endl;
+#endif
+
+	if (int r = g_mylua_index(L, key, SockUtil_Reg))
+		return r;
+	
+	lua_pushnil(L);
+	return 1;
+}
+#endif // SOCKLIB_NOCASE
+
 #endif // SOCKLIB_TO_LUA
 
 SOCKLIB_NAMESPACE_END

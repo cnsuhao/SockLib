@@ -1,5 +1,5 @@
 //
-//  socklib.test.cpp
+//  main.cpp
 //
 //  Created by liangX on 15/3/21.
 //  Copyright (c) 2015. All rights reserved.
@@ -31,7 +31,7 @@ int main(int argc, const char * argv[])
 #if 1 && SOCKLIB_TO_LUA
 //	luaL_dofile(L, "socklib_test.lua");
 //	socklib::LuaHelper::debugScriptFile(L, "socklib_test.lua");
-	socklib::LuaHelper::debugScriptFile(L, "/Users/LX/CC/MyLua/MyLua51Test/scripts/test.lua");
+	socklib::LuaHelper::debugScriptFile(L, "/Users/LX/CC/MyLua/MyLua51Test/scripts/socklib_test.lua");
 
 	while (1) {
 		socklib::SockLib::poll();
