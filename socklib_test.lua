@@ -232,29 +232,30 @@ end
 function test_udpclient()
 end
 
+function print_table(prefix, tbl)
+	print("@ " .. prefix)
+	for k, v in pairs(tbl) do
+		if not string.find(tostring(k), "__") then
+			print(prefix .. "." .. tostring(k) .. "=" .. tostring(v))
+		end
+	end
+end
+
 function test_socklib_info()
 	print("---------------------test_socklib_info() {")
 
 	print("@ " .. socklib._VERSION)
 
-	for k, v in pairs(socklib) do
-		print("socklib." .. tostring(k) .. "=" .. tostring(v))
-	end
-
-	print("@ socklib.util")
-	for k, v in pairs(socklib.util) do
-		print("socklib.util." .. tostring(k) .. "=" .. tostring(v))
-	end
-
-	print("@ socklib.EVT")
-	for k, v in pairs(socklib.EVT) do
-		print("socklib.EVT." .. tostring(k) .. "=" .. tostring(v))
-	end
-
-	print("@ socklib.OPT")
-	for k, v in pairs(socklib.OPT) do
-		print("socklib.OPT." .. tostring(k) .. "=" .. tostring(v))
-	end
+	print_table("socklib", socklib)
+	print_table("socklib.tcp", getmetatable(socklib.tcp()))
+	print_table("socklib.udp", getmetatable(socklib.udp()))
+	print_table("socklib.buf", getmetatable(socklib.buf()))
+	print_table("socklib.EVT", socklib.EVT)
+	print_table("socklib.OPT", socklib.OPT)
+	print_table("socklib.util", socklib.util)
+	print_table("socklib.util.md5", getmetatable(socklib.util.md5()))
+	print_table("socklib.util.sha1", getmetatable(socklib.util.sha1()))
+	print_table("socklib.util.rc4", getmetatable(socklib.util.rc4()))
 
 	print("---------------------test_socklib_info() }")
 end
@@ -263,19 +264,28 @@ end
 --		obj.XXX  == obj.xxx  == obj.XxX  ...
 --		obj:XX() == obj:xx() == obj:Xx() ...
 function test_socklib_nocase()
+	print("---------------------test_socklib_nocase() {")
+
 	print( socklib.TCP )
 	print( socklib.uDp() )
 	print( socklib.buf() )
-	print( socklib.UtIl.MD5 )
 	print( socklib.util.Rc4() )
-	print( socklib.UTIl.sHa1() )
 	print( socklib.uTil.B64Enc("haha") )
 	print( socklib.uTil.TiCK() )
+	print( socklib.UtiL.MD5():Update("ssf"):Final() )
+	print( socklib.utiL.md5():update("ssf"):final() )
+	print( socklib.UtiL.SHA1():Update("ssf"):Final() )
+	print( socklib.utiL.sha1():update("ssf"):final() )
+	print( socklib.OPt.reUseaddr )
+	print( socklib.evt.CONNECT )
+
+	print("---------------------test_socklib_nocase() }")
 end
 
---test_socklib_info()
-
+test_socklib_info()
 test_socklib_nocase()
+
+--print( socklib.buf():w("123\12\44\AB").sha1 )
 
 --test_util_md5()
 --test_util_sha1()

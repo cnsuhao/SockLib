@@ -42,6 +42,7 @@ static std::string SOCKLIB_TCP 	= SOCKLIB_NAME ".tcp";
 static std::string SOCKLIB_UDP 	= SOCKLIB_NAME ".udp";
 static std::string SOCKLIB_BUF 	= SOCKLIB_NAME ".buf";
 static std::string SOCKLIB_UTIL = SOCKLIB_NAME ".util";
+static std::string SOCKLIB_NCAS = SOCKLIB_NAME ".nocase";
 
 #if SOCKLIB_TO_LUA
 LuaHelper::Objects	LuaHelper::_objs;
@@ -330,9 +331,6 @@ static const luaL_Reg SockLib_Reg[] = {
 	{ "udp", 		SockLib::mylua_udp },
 	{ "buf", 		SockLib::mylua_buf },
 	{ "poll", 		SockLib::mylua_poll },
-	#if SOCKLIB_NOCASE
-	{ "__index", 	SockLib::mylua_index },
-	#endif
 	{ NULL, 		NULL }
 };
 
@@ -349,7 +347,7 @@ static const luaL_Reg SockTcp_Reg[] = {
 	{ "onevent", 	SockTcp::mylua_onevent },
 	{ "setopt", 	SockTcp::mylua_setopt },
 //	{ "__eq", 		SockTcp::mylua_eq },
-	{ "__index", 	SockTcp::mylua_index },
+	{ "__index", 	LuaHelper::mylua_index },
 	{ "__gc", 		SockTcp::mylua_gc },
 	{ "__tostring", SockTcp::mylua_tostring },
 	{ NULL, 		NULL }
@@ -362,6 +360,7 @@ static const luaL_Reg SockUdp_Reg[] = {
 	{ "close", 		SockUdp::mylua_close },
 	{ "onevent", 	SockUdp::mylua_onevent },
 	{ "setopt", 	SockUdp::mylua_setopt },
+	{ "__index", 	LuaHelper::mylua_index },
 	{ "__gc", 		SockUdp::mylua_gc },
 	{ "__tostring", SockUdp::mylua_tostring },
 	{ NULL, 		NULL }
@@ -374,8 +373,8 @@ static const luaL_Reg SockBuf_Reg[] = {
 	
 	{ "sub", 		SockBuf::mylua_sub },
 
-//	{ "buffer", 	SockBuf::mylua_buffer },	// __index do it
-//	{ "length", 	SockBuf::mylua_length },	// __index do it
+	{ "buffer", 	SockBuf::mylua_buffer },	// __index do it
+	{ "length", 	SockBuf::mylua_length },	// __index do it
 
 	{ "w", 			SockBuf::mylua_w },
 	{ "wl", 		SockBuf::mylua_wl },
@@ -433,10 +432,11 @@ static const luaL_Reg SockUtil_Reg[] = {
 	{ "htonll",		Util::mylua_htonll },
 	{ "ntohll",		Util::mylua_ntohll },
 
-	#if SOCKLIB_NOCASE
-	{ "__index", 	Util::mylua_index },
-	#endif
+	{ NULL, 		NULL }
+};
 
+static const luaL_Reg SockNcas_Reg[] = {
+	{ "__index", 	LuaHelper::mylua_index },
 	{ NULL, 		NULL }
 };
 
@@ -448,7 +448,7 @@ static const luaL_Reg AlgRC4_Reg[] = {
 	{ "__tostring", RC4::mylua_tostring },
 
 	#if SOCKLIB_NOCASE
-	{ "__index", 	RC4::mylua_index },
+	{ "__index", 	LuaHelper::mylua_index },
 	#endif
 	{ NULL, 		NULL }
 };
@@ -461,7 +461,7 @@ static const luaL_Reg AlgMD5_Reg[] = {
 	{ "__tostring", MD5::mylua_tostring },
 
 	#if SOCKLIB_NOCASE
-	{ "__index", 	MD5::mylua_index },
+	{ "__index", 	LuaHelper::mylua_index },
 	#endif
 	{ NULL, 		NULL }
 };
@@ -474,35 +474,72 @@ static const luaL_Reg AlgSHA1_Reg[] = {
 	{ "__tostring", SHA1::mylua_tostring },
 
 	#if SOCKLIB_NOCASE
-	{ "__index", 	SHA1::mylua_index },
+	{ "__index", 	LuaHelper::mylua_index },
 	#endif
 	{ NULL, 		NULL }
 };
 #endif // SOCKLIB_ALG
 
-#define SOCKEVT_CONNECT		"connect"
-#define SOCKEVT_ACCEPT		"accept"
-#define SOCKEVT_ERROR		"error"
-#define SOCKEVT_RECV		"recv"
-#define SOCKEVT_SEND		"send"
-#define SOCKEVT_CLOSE		"close"
+#define SOCKEVT_CONNECT			"CONNECT"
+#define SOCKEVT_ACCEPT			"ACCEPT"
+#define SOCKEVT_ERROR			"ERROR"
+#define SOCKEVT_RECV			"RECV"
+#define SOCKEVT_SEND			"SEND"
+#define SOCKEVT_CLOSE			"CLOSE"
 
-#define SOCKOPT_BLOCKING	"blocking"
-#define SOCKOPT_SENDBUFSIZE	"sendbufsize"
-#define SOCKOPT_RECVBUFSIZE	"recvbufsize"
-#define SOCKOPT_SENDTIMEOUT	"sendtimeout"
-#define SOCKOPT_RECVTIMEOUT	"recvtimeout"
-#define SOCKOPT_REUSEADDR	"reuseaddr"
+#define SOCKOPT_BLOCKING		"BLOCKING"
+#define SOCKOPT_SENDBUFSIZE		"SENDBUFSIZE"
+#define SOCKOPT_RECVBUFSIZE		"RECVBUFSIZE"
+#define SOCKOPT_SENDTIMEOUT		"SENDTIMEOUT"
+#define SOCKOPT_RECVTIMEOUT		"RECVTIMEOUT"
+#define SOCKOPT_REUSEADDR		"REUSEADDR"
 
-static int g_mylua_index(lua_State* L, const char* key, const luaL_Reg* walk)
+int LuaHelper::mylua_index_walk(lua_State* L, const char* key)
 {
-	for (const luaL_Reg* p = walk; p->name; p++) {
-		if (0 == NameStrCmp(p->name, key)) {
-			lua_pushcclosure(L, p->func, 0);
-			return 1;
+	int idx = lua_gettop(L);
+	
+//	std::cout << "typename=" << lua_typename(L, lua_type(L, idx)) << std::endl;
+
+	if (lua_istable(L, idx)) {
+		lua_pushnil(L);
+		while (lua_next(L, idx)) {
+			const char* name = lua_tostring(L, -2);
+//			if (name) std::cout << "name=" << name << std::endl;
+			if (name && 0 == NameStrCmp(name, key)) {
+//				std::cout << "found_name=" << name << std::endl;
+				return 1;
+			}
+			lua_pop(L, 1);
+		}
+		lua_pop(L, 1);
+	} else if (lua_isuserdata(L, idx)) {
+		lua_getmetatable(L, idx);
+		if (lua_istable(L, -1)) {
+			if (mylua_index_walk(L, key))
+				return 1;
 		}
 	}
+	
+	lua_settop(L, idx - 1);
+	
 	return 0;
+}
+
+int LuaHelper::mylua_index(lua_State* L)
+{
+	const char* key = luaL_checkstring(L, 2);
+
+#if SOCKLIB_DEBUG
+//	std::cout << "LuaHelper::mylua_index(" << key << ")" << std::endl;
+#endif
+	
+	lua_pushvalue(L, 1);
+	if (int r = mylua_index_walk(L, key))
+		return r;
+
+	lua_pushnil(L);
+
+	return 1;
 }
 
 //----------------------------------------------------------------------------
@@ -520,6 +557,7 @@ int SockLib::mylua_regAs(lua_State* L, const char* libName)
 	SOCKLIB_UDP = std::string(libName) + ".udp";
 	SOCKLIB_BUF = std::string(libName) + ".buf";
 	SOCKLIB_UTIL = std::string(libName) + ".util";
+	SOCKLIB_NCAS = std::string(libName) + ".nocase";
 
 	#if SOCKLIB_ALG
 	SOCKLIB_RC4 = std::string(libName) + ".rc4";
@@ -536,8 +574,7 @@ int SockLib::mylua_regAs(lua_State* L, const char* libName)
 	#endif
 
 	#if SOCKLIB_NOCASE
-	LuaHelper::newMetatable(L, _libName.c_str(), SockLib_Reg);
-	LuaHelper::newMetatable(L, SOCKLIB_UTIL, SockUtil_Reg);
+	LuaHelper::newMetatable(L, SOCKLIB_NCAS, SockNcas_Reg);
 	#endif
 	LuaHelper::newMetatable(L, SOCKLIB_TCP, SockTcp_Reg);
 	LuaHelper::newMetatable(L, SOCKLIB_UDP, SockUdp_Reg);
@@ -550,9 +587,8 @@ int SockLib::mylua_regAs(lua_State* L, const char* libName)
 	#endif // SOCKLIB_ALG
 	
 	lua_getglobal(L, _libName.c_str());
-	
 	#if SOCKLIB_NOCASE
-	luaL_getmetatable(L, _libName.c_str());
+	luaL_getmetatable(L, SOCKLIB_NCAS.c_str());
 	lua_setmetatable(L, -2);
 	#endif
 	
@@ -563,7 +599,7 @@ int SockLib::mylua_regAs(lua_State* L, const char* libName)
 	// socklib.util
 	lua_newtable(L);
 	#if SOCKLIB_NOCASE
-	luaL_getmetatable(L, SOCKLIB_UTIL.c_str());
+	luaL_getmetatable(L, SOCKLIB_NCAS.c_str());
 	lua_setmetatable(L, -2);
 	#endif
 	for (const luaL_Reg* p = SockUtil_Reg; p->name; p++) {
@@ -572,42 +608,45 @@ int SockLib::mylua_regAs(lua_State* L, const char* libName)
 	}
 	lua_setfield(L, -2, "util");
 	
-	struct KeyVal {
-		const char* key;
-		const char* val;
-	};
-
 	// socklib.EVT
 	lua_newtable(L);
-	static const KeyVal evts[] = {
-		{ "CONNECT", 	SOCKEVT_CONNECT },
-		{ "ACCEPT", 	SOCKEVT_ACCEPT },
-		{ "ERROR", 		SOCKEVT_ERROR },
-		{ "RECV", 		SOCKEVT_RECV },
-		{ "SEND", 		SOCKEVT_SEND },
-		{ "CLOSE", 		SOCKEVT_CLOSE },
-		{ NULL, 		NULL },
+	#if SOCKLIB_NOCASE
+	luaL_getmetatable(L, SOCKLIB_NCAS.c_str());
+	lua_setmetatable(L, -2);
+	#endif
+	const char* evts[] = {
+		SOCKEVT_CONNECT,
+		SOCKEVT_ACCEPT,
+		SOCKEVT_ERROR,
+		SOCKEVT_RECV,
+		SOCKEVT_SEND,
+		SOCKEVT_CLOSE
 	};
-	for (const KeyVal* p = evts; p->key; p++) {
-		lua_pushstring(L, p->val);
-		lua_setfield(L, -2, p->key);
+	for (int i = 0; i < sizeof(evts)/sizeof(evts[0]); ++i) {
+		lua_pushstring(L, evts[i]);
+		lua_setfield(L, -2, evts[i]);
 	}
 	lua_setfield(L, -2, "EVT");
 
 	// socklib.OPT
 	lua_newtable(L);
-	static const KeyVal opts[] = {
-		{ "BLOCKING", 		SOCKOPT_BLOCKING },
-		{ "SENDBUFSIZE", 	SOCKOPT_SENDBUFSIZE },
-		{ "RECVBUFSIZE", 	SOCKOPT_RECVBUFSIZE },
-		{ "SENDTIMEOUT", 	SOCKOPT_SENDTIMEOUT },
-		{ "RECVTIMEOUT", 	SOCKOPT_RECVTIMEOUT },
-		{ "REUSEADDR", 		SOCKOPT_REUSEADDR },
-		{ NULL, 			NULL },
+	#if SOCKLIB_NOCASE
+	luaL_getmetatable(L, SOCKLIB_NCAS.c_str());
+	lua_setmetatable(L, -2);
+	#endif
+//	lua_pushcclosure(L, LuaHelper::mylua_index, 0);
+//	lua_setfield(L, -2, "__index");
+	static const char* opts[] = {
+		SOCKOPT_BLOCKING,
+		SOCKOPT_SENDBUFSIZE,
+		SOCKOPT_RECVBUFSIZE,
+		SOCKOPT_SENDTIMEOUT,
+		SOCKOPT_RECVTIMEOUT,
+		SOCKOPT_REUSEADDR
 	};
-	for (const KeyVal* p = opts; p->key; p++) {
-		lua_pushstring(L, p->val);
-		lua_setfield(L, -2, p->key);
+	for (int i = 0; i < sizeof(opts)/sizeof(opts[0]); ++i) {
+		lua_pushstring(L, opts[i]);
+		lua_setfield(L, -2, opts[i]);
 	}
 	lua_setfield(L, -2, "OPT");
 
@@ -675,33 +714,6 @@ int SockLib::mylua_poll(lua_State* L)
 	}
 	return 0;
 }
-
-#if SOCKLIB_NOCASE
-//----------------------------------------------------------------------------
-//
-int SockLib::mylua_index(lua_State* L)
-{
-	const char* key = luaL_checkstring(L, 2);
-
-#if SOCKLIB_DEBUG
-	std::cout << "SockLib::mylua_index(" << key << ")" << std::endl;
-#endif
-
-	if (int r = g_mylua_index(L, key, SockLib_Reg))
-		return r;
-
-	if (0 == NameStrCmp(key, "util")) {
-		lua_pushstring(L, "util");
-		lua_rawget(L, 1);
-		return 1;
-	}
-
-	lua_pushvalue(L, 2);
-	lua_rawget(L, 1);
-//	lua_pushnil(L);
-	return 1;
-}
-#endif // SOCKLIB_NOCASE
 
 #endif // SOCKLIB_TO_LUA
 
@@ -871,7 +883,7 @@ int SockTcp::connect(const std::string& host, u16_t port)
 	_sockState = SockLib::STA_CONNECTTING;
 	
 #ifdef SOCKLIB_DEBUG
-	std::cout << SockLib::libName() << ".tcp{fd=" << fd() << "}:connect(" << host << ":" << port << ")" << std::endl;
+	std::cout << SOCKLIB_TCP << "{fd=" << fd() << "}:connect(" << host << ":" << port << ")" << std::endl;
 #endif
 
 	int r = ::connect(fd(), (struct sockaddr*)&addr, sizeof(addr));
@@ -926,7 +938,7 @@ int SockTcp::listen(int n)
 		return -1;
 
 #ifdef SOCKLIB_DEBUG
-	std::cout << SockLib::libName() << ".tcp{fd=" << fd() << "}:listen(" << n << ")" << std::endl;
+	std::cout << SOCKLIB_TCP << "{fd=" << fd() << "}:listen(" << n << ")" << std::endl;
 #endif
 
 	return 0;
@@ -937,7 +949,7 @@ int SockTcp::listen(int n)
 int SockTcp::accept(SockTcp* client)
 {
 #ifdef SOCKLIB_DEBUG
-	std::cout << SockLib::libName() << ".tcp{fd=" << fd() << "}:close()" << std::endl;
+	std::cout << SOCKLIB_TCP << "{fd=" << fd() << "}:close()" << std::endl;
 #endif
 
 	return 0;
@@ -1024,7 +1036,7 @@ int SockTcp::doRecv()
 void SockTcp::onConnect(bool ok)
 {
 #ifdef SOCKLIB_DEBUG
-	std::cout << SockLib::libName() << ".tcp{fd=" << fd() << "}:onConnect(" << ok << ")" << std::endl;
+	std::cout << SOCKLIB_TCP << "{fd=" << fd() << "}:onConnect(" << ok << ")" << std::endl;
 #endif
 
 #if SOCKLIB_TO_LUA
@@ -1379,7 +1391,8 @@ int SockTcp::mylua_index(lua_State* L)
 	std::cout << "SockTcp::mylua_index(" << key << ")" << std::endl;
 #endif
 
-	if (int r = g_mylua_index(L, key, SockTcp_Reg))
+	lua_pushvalue(L, 1);
+	if (int r = LuaHelper::mylua_index_walk(L, key))
 		return r;
 
 	if (0 == NameStrCmp(key, "inbuf")) {
@@ -1650,7 +1663,8 @@ int SockUdp::mylua_index(lua_State* L)
 	std::cout << "SockUdp::mylua_index(" << key << ")" << std::endl;
 #endif
 
-	if (int r = g_mylua_index(L, key, SockUdp_Reg))
+	lua_pushvalue(L, 1);
+	if (int r = LuaHelper::mylua_index_walk(L, key))
 		return r;
 	
 	lua_pushnil(L);
@@ -2162,7 +2176,7 @@ int SockBuf::mylua_buffer(lua_State* L)
 {
 	SockBuf* _this = mylua_this(L);
 	
-	if (lua_gettop(L) > 0) {
+	if (lua_gettop(L) > 1) {
 		lua_pushlightuserdata(L, _this->pos());
 		lua_pushinteger(L, _this->len());
 		return 2;
@@ -2188,19 +2202,63 @@ int SockBuf::mylua_length(lua_State* L)
 //
 int SockBuf::mylua_index(lua_State* L)
 {
-//	SockTcp* _this = mylua_this(L);
 	const char* key = luaL_checkstring(L, 2);
 
 #if SOCKLIB_DEBUG
 	std::cout << "SockBuf::mylua_index(" << key << ")" << std::endl;
 #endif
 
-	if (int r = g_mylua_index(L, key, SockBuf_Reg))
+	lua_pushvalue(L, 1);
+	if (int r = LuaHelper::mylua_index_walk(L, key))
 		return r;
-
-	if (0 == NameStrCmp(key, "buffer") || 0 == NameStrCmp(key, "pos") || 0 == NameStrCmp(key, "buf")) {
+	
+	if (/*0 == NameStrCmp(key, "buffer") || */
+		0 == NameStrCmp(key, "str") || 0 == NameStrCmp(key, "string") ||
+		0 == NameStrCmp(key, "pos") || 0 == NameStrCmp(key, "buf")) {
+		lua_settop(L, 1);
 		return mylua_buffer(L);
-	} else if (0 == NameStrCmp(key, "length") || 0 == NameStrCmp(key, "len")) {
+#if SOCKLIB_ALG
+	} else if (0 == NameStrCmp(key, "md5")) {
+		SockBuf* _this = mylua_this(L);
+		u8_t hash[16]; char hex[128];
+		MD5_build(hash, _this->pos(), _this->len());
+		for (int i = 0; i < sizeof(hash); ++i)
+			sprintf(hex + i * 2, "%02x", hash[i]);
+		lua_pushstring(L, hex);
+		return 1;
+	} else if (0 == NameStrCmp(key, "sha1")) {
+		SockBuf* _this = mylua_this(L);
+		u8_t hash[20]; char hex[128];
+		SHA1_build(hash, _this->pos(), _this->len());
+		for (int i = 0; i < sizeof(hash); ++i)
+			sprintf(hex + i * 2, "%02x", hash[i]);
+		lua_pushstring(L, hex);
+		return 1;
+	} else if (0 == NameStrCmp(key, "b64") || 0 == NameStrCmp(key, "base64")) {
+		SockBuf* _this = mylua_this(L);
+		std::string b64 = Base64_encode(_this->pos(), _this->len());
+		lua_pushstring(L, b64.c_str());
+		return 1;
+	} else if (0 == NameStrCmp(key, "crc") || 0 == NameStrCmp(key, "crc32")) {
+		SockBuf* _this = mylua_this(L);
+		u32_t crc = CRC32_build(_this->pos(), _this->len());
+		lua_pushnumber(L, crc);
+		return 1;
+	} else if (0 == NameStrCmp(key, "hex")) {
+		SockBuf* _this = mylua_this(L);
+		if (!_this->len()) {
+			lua_pushstring(L, "(null)");
+			return 1;
+		}
+		u8_t* buf = _this->pos();
+		char* hex = new char[_this->len() * 2 + 2];
+		for (u32_t i = 0; i < _this->len(); ++i)
+			sprintf(hex + i * 2, "%02X", buf[i]);
+		lua_pushstring(L, hex);
+		delete[] hex;
+		return 1;
+#endif
+	} else if (/*0 == NameStrCmp(key, "length") || */0 == NameStrCmp(key, "len")) {
 		return mylua_length(L);
 	}
 
@@ -2250,6 +2308,30 @@ int SockBuf::mylua_tostring(lua_State* L)
 //
 // CRC32 codes write by someone I don't know.
 //
+/* 
+ ********************************************************************** 
+ ** Copyright (C) 1990, RSA Data Security, Inc. All rights reserved. ** 
+ **                                                                  ** 
+ ** License to copy and use this software is granted provided that   ** 
+ ** it is identified as the "RSA Data Security, Inc. MD5 Message     ** 
+ ** Digest Algorithm" in all material mentioning or referencing this ** 
+ ** software or this function.                                       ** 
+ **                                                                  ** 
+ ** License is also granted to make and use derivative works         ** 
+ ** provided that such works are identified as "derived from the RSA ** 
+ ** Data Security, Inc. MD5 Message Digest Algorithm" in all         ** 
+ ** material mentioning or referencing the derived work.             ** 
+ **                                                                  ** 
+ ** RSA Data Security, Inc. makes no representations concerning      ** 
+ ** either the merchantability of this software or the suitability   ** 
+ ** of this software for any particular purpose.  It is provided "as ** 
+ ** is" without express or implied warranty of any kind.             ** 
+ **                                                                  ** 
+ ** These notices must be retained in any copies of any part of this ** 
+ ** documentation and/or software.                                   ** 
+ ********************************************************************** 
+ */
+
 static u32_t crc_table[256] =
 {
   0x00000000L, 0x77073096L, 0xee0e612cL, 0x990951baL, 0x076dc419L,
@@ -2379,11 +2461,11 @@ int RC4::mylua_process(lua_State* L)
 			outDat = (u8_t*)malloc(len);
 			_this->process((const u8_t*)buf->pos(), outDat, len);
 		} else {
-			luaL_error(L, "%s:rc4(<unknown data>) .", SockLib::libName());
+			luaL_error(L, "%s:process(<unknown data>)", SOCKLIB_RC4.c_str());
 			return 1;
 		}
 	} else {
-		luaL_error(L, "%s:rc4(<unknown data>) .", SockLib::libName());
+		luaL_error(L, "%s:process(<unknown data>)", SOCKLIB_RC4.c_str());
 		return 1;
 	}
 
@@ -2437,10 +2519,12 @@ int RC4::mylua_index(lua_State* L)
 	std::cout << "RC4::mylua_index(" << key << ")" << std::endl;
 #endif
 
-	if (int r = g_mylua_index(L, key, AlgRC4_Reg))
+	lua_pushvalue(L, 1);
+	if (int r = LuaHelper::mylua_index_walk(L, key))
 		return r;
 	
 	lua_pushnil(L);
+
 	return 1;
 }
 #endif // SOCKLIB_NOCASE
@@ -2452,6 +2536,30 @@ int RC4::mylua_index(lua_State* L)
 //
 // MD5 codes write by someone I don't know.
 //
+/* 
+ ********************************************************************** 
+ ** Copyright (C) 1990, RSA Data Security, Inc. All rights reserved. ** 
+ **                                                                  ** 
+ ** License to copy and use this software is granted provided that   ** 
+ ** it is identified as the "RSA Data Security, Inc. MD5 Message     ** 
+ ** Digest Algorithm" in all material mentioning or referencing this ** 
+ ** software or this function.                                       ** 
+ **                                                                  ** 
+ ** License is also granted to make and use derivative works         ** 
+ ** provided that such works are identified as "derived from the RSA ** 
+ ** Data Security, Inc. MD5 Message Digest Algorithm" in all         ** 
+ ** material mentioning or referencing the derived work.             ** 
+ **                                                                  ** 
+ ** RSA Data Security, Inc. makes no representations concerning      ** 
+ ** either the merchantability of this software or the suitability   ** 
+ ** of this software for any particular purpose.  It is provided "as ** 
+ ** is" without express or implied warranty of any kind.             ** 
+ **                                                                  ** 
+ ** These notices must be retained in any copies of any part of this ** 
+ ** documentation and/or software.                                   ** 
+ ********************************************************************** 
+ */
+ 
 #define MD5_S11 7
 #define MD5_S12 12
 #define MD5_S13 17
@@ -2629,8 +2737,7 @@ void MD5::update(const u8_t* data, u32_t len)
 
     partLen = 64 - index;
 
-    if (len >= partLen)
-	{
+    if (len >= partLen) {
 	    memcpy((u8_t*)&_buffer[index], (u8_t*) data, partLen);
         md5_transform(_state, _buffer);
 
@@ -2638,8 +2745,9 @@ void MD5::update(const u8_t* data, u32_t len)
             md5_transform(_state, &data[i]);
 
         index = 0;
-    } else
+    } else {
         i = 0;
+	}
 
     memcpy((u8_t*)&_buffer[index], (u8_t*)&data[i], len - i );
 }
@@ -2652,11 +2760,9 @@ void MD5::final(u8_t digest[16])
     md5_encode(bits, _count, 8);
 
     index = (u32_t)((_count[0] >> 3) & 0x3f);
-
     padLen = (index < 56) ? (56 - index) : (120 - index);
 
     update(md5_padding, padLen);
-
     update(bits, 8);
 
     md5_encode(digest, _state, 16);
@@ -2782,10 +2888,12 @@ int MD5::mylua_index(lua_State* L)
 	std::cout << "MD5::mylua_index(" << key << ")" << std::endl;
 #endif
 
-	if (int r = g_mylua_index(L, key, AlgMD5_Reg))
+	lua_pushvalue(L, 1);
+	if (int r = LuaHelper::mylua_index_walk(L, key))
 		return r;
 	
 	lua_pushnil(L);
+
 	return 1;
 }
 #endif // SOCKLIB_NOCASE
@@ -2797,6 +2905,30 @@ int MD5::mylua_index(lua_State* L)
 //
 // SHA1 codes write by someone I don't know.
 //
+/* 
+ ********************************************************************** 
+ ** Copyright (C) 1990, RSA Data Security, Inc. All rights reserved. ** 
+ **                                                                  ** 
+ ** License to copy and use this software is granted provided that   ** 
+ ** it is identified as the "RSA Data Security, Inc. MD5 Message     ** 
+ ** Digest Algorithm" in all material mentioning or referencing this ** 
+ ** software or this function.                                       ** 
+ **                                                                  ** 
+ ** License is also granted to make and use derivative works         ** 
+ ** provided that such works are identified as "derived from the RSA ** 
+ ** Data Security, Inc. MD5 Message Digest Algorithm" in all         ** 
+ ** material mentioning or referencing the derived work.             ** 
+ **                                                                  ** 
+ ** RSA Data Security, Inc. makes no representations concerning      ** 
+ ** either the merchantability of this software or the suitability   ** 
+ ** of this software for any particular purpose.  It is provided "as ** 
+ ** is" without express or implied warranty of any kind.             ** 
+ **                                                                  ** 
+ ** These notices must be retained in any copies of any part of this ** 
+ ** documentation and/or software.                                   ** 
+ ********************************************************************** 
+ */
+
 #define SHA1_ROL(value, bits) (((value) << (bits)) | ((value) >> (32 - (bits))))
 
 #ifndef WORDS_BIGENDIAN
@@ -2959,10 +3091,10 @@ int SHA1::mylua_update(lua_State* L)
 				len = buf->len();
 			_this->update(buf->pos(), len);
 		} else {
-			luaL_error(L, "%s:update(<unknown data>) .", SOCKLIB_SHA1.c_str());
+			luaL_error(L, "%s:update(<unknown data>)", SOCKLIB_SHA1.c_str());
 		}
 	} else {
-		luaL_error(L, "%s:update(<unknown data>) .", SOCKLIB_SHA1.c_str());
+		luaL_error(L, "%s:update(<unknown data>)", SOCKLIB_SHA1.c_str());
 	}
 
 	lua_pushvalue(L, 1);
@@ -3037,10 +3169,12 @@ int SHA1::mylua_index(lua_State* L)
 	std::cout << "SHA1::mylua_index(" << key << ")" << std::endl;
 #endif
 
-	if (int r = g_mylua_index(L, key, AlgSHA1_Reg))
+	lua_pushvalue(L, 1);
+	if (int r = LuaHelper::mylua_index_walk(L, key))
 		return r;
 	
 	lua_pushnil(L);
+
 	return 1;
 }
 #endif // SOCKLIB_NOCASE
@@ -3299,8 +3433,7 @@ std::string Util::urlenc(const std::string& url)
 		{
 			*psz++ = (char)v;
 		}
-		else
-		{
+		else {
 			*psz++ = '%';
 			*psz++ = HEX_CHARS[(v >> 4) & 15];
 			*psz++ = HEX_CHARS[v & 15];
@@ -3347,7 +3480,7 @@ int Util::mylua_u32op(lua_State* L)
 		} else if (0 == strcmp(s, "!")) {
 			r = !a;
 		} else {
-			luaL_error(L, "%s.u32op(opt, num) unsupported opt=\"%s\"", SockLib::libName(), s);
+			luaL_error(L, "%s.u32op(opt, num) unsupported opt=\"%s\"", SOCKLIB_UTIL.c_str(), s);
 		}
 	} else if (argc == 3) {
 		a = (u32_t)luaL_checkinteger(L, 1);
@@ -3397,11 +3530,11 @@ int Util::mylua_u32op(lua_State* L)
 			lua_pushboolean(L, a || b);
 			return 1;
 		} else {
-			luaL_error(L, "%s.u32op(num1, opt, num2) unsupported opt=\"%s\"", SockLib::libName(), s);
+			luaL_error(L, "%s.u32op(num1, opt, num2) unsupported opt=\"%s\"", SOCKLIB_UTIL.c_str(), s);
 		}
 	} else {
 		luaL_error(L, "usage: \n%s.u32op(opt, num) or %s.u32op(num1, opt, num2) \ne.g. %s.u32op(\"~\", 123) %s.u32op(123, \"<<\", 2)",
-			SockLib::libName(), SockLib::libName(), SockLib::libName(), SockLib::libName());
+			SOCKLIB_UTIL.c_str(), SOCKLIB_UTIL.c_str(), SOCKLIB_UTIL.c_str(), SOCKLIB_UTIL.c_str());
 	}
 	
 	lua_pushinteger(L, r);
@@ -3513,10 +3646,10 @@ int Util::mylua_crc32(lua_State* L)
 				len = buf->len();
 			ret = CRC32_build(buf->pos(), len, crc);
 		} else {
-			luaL_error(L, "%s:crc32(<unknown data>) .", SockLib::libName());
+			luaL_error(L, "%s.crc32(<unknown data>)", SOCKLIB_UTIL.c_str());
 		}
 	} else {
-		luaL_error(L, "%s:crc32(<unknown data>) .", SockLib::libName());
+		luaL_error(L, "%s.crc32(<unknown data>)", SOCKLIB_UTIL.c_str());
 	}
 	
 	lua_pushinteger(L, ret);
@@ -3564,11 +3697,11 @@ int Util::mylua_rc4(lua_State* L)
 			outDat = (u8_t*)malloc(len);
 			RC4_build(key, keySize, buf->pos(), outDat, len);
 		} else {
-			luaL_error(L, "%s:rc4(<unknown data>) .", SockLib::libName());
+			luaL_error(L, "%s.rc4(<unknown data>)", SOCKLIB_UTIL.c_str());
 			return 1;
 		}
 	} else {
-		luaL_error(L, "%s:rc4(<unknown data>) .", SockLib::libName());
+		luaL_error(L, "%s.rc4(<unknown data>)", SOCKLIB_UTIL.c_str());
 		return 1;
 	}
 
@@ -3612,11 +3745,11 @@ int Util::mylua_md5(lua_State* L)
 				len = buf->len();
 			MD5_build(hash, buf->pos(), len);
 		} else {
-			luaL_error(L, "%s:md5(<unknown data>) .", SockLib::libName());
+			luaL_error(L, "%s.md5(<unknown data>)", SOCKLIB_UTIL.c_str());
 			return 1;
 		}
 	} else {
-		luaL_error(L, "%s:md5(<unknown data>) .", SockLib::libName());
+		luaL_error(L, "%s.md5(<unknown data>)", SOCKLIB_UTIL.c_str());
 		return 1;
 	}
 
@@ -3657,11 +3790,11 @@ int Util::mylua_sha1(lua_State* L)
 				len = buf->len();
 			SHA1_build(hash, buf->pos(), len);
 		} else {
-			luaL_error(L, "%s:sha1(<unknown data>) .", SockLib::libName());
+			luaL_error(L, "%s.sha1(<unknown data>)", SOCKLIB_UTIL.c_str());
 			return 1;
 		}
 	} else {
-		luaL_error(L, "%s:sha1(<unknown data>) .", SockLib::libName());
+		luaL_error(L, "%s.sha1(<unknown data>)", SOCKLIB_UTIL.c_str());
 		return 1;
 	}
 
@@ -3695,11 +3828,11 @@ int Util::mylua_b64enc(lua_State* L)
 				len = buf->len();
 			ret = Base64_encode(buf->pos(), len);
 		} else {
-			luaL_error(L, "%s:b64enc(<unknown data>) .", SockLib::libName());
+			luaL_error(L, "%s.b64enc(<unknown data>)", SOCKLIB_UTIL.c_str());
 			return 1;
 		}
 	} else {
-		luaL_error(L, "%s:b64enc(<unknown data>) .", SockLib::libName());
+		luaL_error(L, "%s.b64enc(<unknown data>)", SOCKLIB_UTIL.c_str());
 		return 1;
 	}
 	
@@ -3727,25 +3860,6 @@ int Util::mylua_b64dec(lua_State* L)
 }
 
 #endif // SOCKLIB_ALG
-
-#if SOCKLIB_NOCASE
-//----------------------------------------------------------------------------
-//
-int Util::mylua_index(lua_State* L)
-{
-	const char* key = luaL_checkstring(L, 2);
-
-#if SOCKLIB_DEBUG
-	std::cout << "Util::mylua_index(" << key << ")" << std::endl;
-#endif
-
-	if (int r = g_mylua_index(L, key, SockUtil_Reg))
-		return r;
-	
-	lua_pushnil(L);
-	return 1;
-}
-#endif // SOCKLIB_NOCASE
 
 #endif // SOCKLIB_TO_LUA
 

@@ -178,6 +178,9 @@ public:
 	#endif
 	}
 
+	static int mylua_index_walk(lua_State* L, const char* key);
+	static int mylua_index(lua_State* L);
+
 protected:
 	static Objects _objs;
 };
@@ -288,10 +291,6 @@ public:
 	static int mylua_buf(lua_State* L);
 	
 	static int mylua_poll(lua_State* L);
-
-	#if SOCKLIB_NOCASE
-	static int mylua_index(lua_State* L);
-	#endif
 
 	static lua_State* luaState() { return _luaState; }
 	
@@ -820,6 +819,29 @@ public:
 //
 // RC4 codes write by someone I don't know.
 //
+/* 
+ ********************************************************************** 
+ ** Copyright (C) 1990, RSA Data Security, Inc. All rights reserved. ** 
+ **                                                                  ** 
+ ** License to copy and use this software is granted provided that   ** 
+ ** it is identified as the "RSA Data Security, Inc. MD5 Message     ** 
+ ** Digest Algorithm" in all material mentioning or referencing this ** 
+ ** software or this function.                                       ** 
+ **                                                                  ** 
+ ** License is also granted to make and use derivative works         ** 
+ ** provided that such works are identified as "derived from the RSA ** 
+ ** Data Security, Inc. MD5 Message Digest Algorithm" in all         ** 
+ ** material mentioning or referencing the derived work.             ** 
+ **                                                                  ** 
+ ** RSA Data Security, Inc. makes no representations concerning      ** 
+ ** either the merchantability of this software or the suitability   ** 
+ ** of this software for any particular purpose.  It is provided "as ** 
+ ** is" without express or implied warranty of any kind.             ** 
+ **                                                                  ** 
+ ** These notices must be retained in any copies of any part of this ** 
+ ** documentation and/or software.                                   ** 
+ ********************************************************************** 
+ */
 class RC4
 {
 public:
@@ -896,6 +918,29 @@ u32_t CRC32_build(const void* data, u32_t len, u32_t crc = 0);
 ///////////////////////////////////////////////////////////////////////////////
 // class MD5
 //
+/* 
+ ********************************************************************** 
+ ** Copyright (C) 1990, RSA Data Security, Inc. All rights reserved. ** 
+ **                                                                  ** 
+ ** License to copy and use this software is granted provided that   ** 
+ ** it is identified as the "RSA Data Security, Inc. MD5 Message     ** 
+ ** Digest Algorithm" in all material mentioning or referencing this ** 
+ ** software or this function.                                       ** 
+ **                                                                  ** 
+ ** License is also granted to make and use derivative works         ** 
+ ** provided that such works are identified as "derived from the RSA ** 
+ ** Data Security, Inc. MD5 Message Digest Algorithm" in all         ** 
+ ** material mentioning or referencing the derived work.             ** 
+ **                                                                  ** 
+ ** RSA Data Security, Inc. makes no representations concerning      ** 
+ ** either the merchantability of this software or the suitability   ** 
+ ** of this software for any particular purpose.  It is provided "as ** 
+ ** is" without express or implied warranty of any kind.             ** 
+ **                                                                  ** 
+ ** These notices must be retained in any copies of any part of this ** 
+ ** documentation and/or software.                                   ** 
+ ********************************************************************** 
+ */
 class MD5
 {
 public:
@@ -933,6 +978,29 @@ static inline void MD5_build(u8_t hash[16], const void* data, u32_t len)
 ///////////////////////////////////////////////////////////////////////////////
 // class SHA1
 //
+/* 
+ ********************************************************************** 
+ ** Copyright (C) 1990, RSA Data Security, Inc. All rights reserved. ** 
+ **                                                                  ** 
+ ** License to copy and use this software is granted provided that   ** 
+ ** it is identified as the "RSA Data Security, Inc. MD5 Message     ** 
+ ** Digest Algorithm" in all material mentioning or referencing this ** 
+ ** software or this function.                                       ** 
+ **                                                                  ** 
+ ** License is also granted to make and use derivative works         ** 
+ ** provided that such works are identified as "derived from the RSA ** 
+ ** Data Security, Inc. MD5 Message Digest Algorithm" in all         ** 
+ ** material mentioning or referencing the derived work.             ** 
+ **                                                                  ** 
+ ** RSA Data Security, Inc. makes no representations concerning      ** 
+ ** either the merchantability of this software or the suitability   ** 
+ ** of this software for any particular purpose.  It is provided "as ** 
+ ** is" without express or implied warranty of any kind.             ** 
+ **                                                                  ** 
+ ** These notices must be retained in any copies of any part of this ** 
+ ** documentation and/or software.                                   ** 
+ ********************************************************************** 
+ */
 class SHA1
 {
 public:
@@ -1012,10 +1080,6 @@ public:
 	static int mylua_ntohl(lua_State* L);
 	static int mylua_htonll(lua_State* L);
 	static int mylua_ntohll(lua_State* L);
-
-	#if SOCKLIB_NOCASE
-	static int mylua_index(lua_State* L);
-	#endif
 #endif // SOCKLIB_TO_LUA
 };
 
