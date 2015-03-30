@@ -1,5 +1,5 @@
 
-function test_util_md5()
+local function test_util_md5()
 	print("---------------------test_util_md5() {")
 
 	local util = socklib.util
@@ -26,7 +26,7 @@ function test_util_md5()
 end
 
 
-function test_util_sha1()
+local function test_util_sha1()
 	print("---------------------test_util_sha1() {")
 
 	local util = socklib.util
@@ -52,7 +52,7 @@ function test_util_sha1()
 	print("---------------------test_util_sha1() }")
 end
 
-function test_util_rc4()
+local function test_util_rc4()
 	print("---------------------test_util_rc4() {")
 
 	local util = socklib.util
@@ -74,7 +74,7 @@ function test_util_rc4()
 	print("---------------------test_util_rc4() }")
 end
 
-function test_util_crc32()
+local function test_util_crc32()
 	print("---------------------test_util_crc32() {")
 
 	local util = socklib.util
@@ -92,7 +92,7 @@ function test_util_crc32()
 	print("---------------------test_util_crc32() }")
 end
 
-function test_util_base64()
+local function test_util_base64()
 	print("---------------------test_util_base64() {")
 
 	local util = socklib.util
@@ -106,7 +106,7 @@ function test_util_base64()
 	print("---------------------test_util_base64() }")
 end
 
-function test_util_u32op()
+local function test_util_u32op()
 	print("---------------------test_util_u32op() {")
 
 	local util = socklib.util
@@ -123,7 +123,7 @@ function test_util_u32op()
 	print("---------------------test_util_u32op() }")
 end
 
-function test_util_other()
+local function test_util_other()
 	print("---------------------test_util_other() {")
 
 	local util = socklib.util
@@ -143,7 +143,7 @@ end
 -- peek:   p() pl() ps() psl() p8() p16() ....
 -- skip/discard:   skip() == discard()
 -- ...
-function test_buf()
+local function test_buf()
 	print("---------------------test_buf() {")
 
 	local tmp = socklib.buf():ws("tmp")
@@ -162,32 +162,33 @@ function test_buf()
 	print("---------------------test_buf() }")
 end
 
-function test_tcpserver()
+local function test_tcpserver()
 end
 
 -- socklib.tcp is a async socket
 -- socklib.tcp().inbuf return it’s byte stream socklib.buf
 -- socklib.tcp().outbuf return it‘s byte stream socklib.buf
 -- ...
-function test_tcpclient()
+
+local function test_tcpclient()
 	print("---------------------test_http() {")
 
 	sk = socklib.tcp()
 
 	sk:onevent(socklib.EVT.CONNECT, function(event)
-		print("sk:onevent(connect)")
+		print("sk:onevent(" .. socklib.EVT.CONNECT .. ")")
 		-- sk:send(...) == sk.outbuf:w(...)
-		sk:setopt(socklib.OPT.RECVTIMEOUT, 2)
+		-- sk:setopt(socklib.OPT.RECVTIMEOUT, 2)
 		sk:send("GET / HTTP/1.1\r\nHost:www.baidu.com\r\n\r\n")
 	end)
 
 	sk:onevent(socklib.EVT.CLOSE, function(event)
-		print("sk:onevent(close)")
+		print("sk:onevent(" .. socklib.EVT.CLOSE .. ")")
 
 		local is = sk.inbuf
 		print( is:rs() )
 
-		-- TODOFIX: will cause PANIC error
+		-- TOFIX: will cause PANIC error
 --		sk = nil
 
 		collectgarbage("collect")
@@ -195,10 +196,10 @@ function test_tcpclient()
 
 	sk:onevent(socklib.EVT.RECV, function(event)
 		local is = sk.inbuf
-		print("sk:onevent(recv) total = " .. tostring(is.length))
-	--	print(is:r(is.length))
-	--	is:discard(is.length)
-		is = nil
+		print("sk:onevent(" .. socklib.EVT.RECV .. ") total = " .. tostring(is.len))
+	--	print(is:r(is.len))
+	--	is:discard(is.len)
+	--	is = nil
 	end)
 
 	sk:connect("www.baidu.com", 80)
@@ -206,7 +207,7 @@ function test_tcpclient()
 	print("---------------------test_http() }")
 end
 
-function test_mjclient()
+local function test_mjclient()
 	local EVT = socklib.EVT
 	local U32OP = socklib.util.u32op
 
@@ -226,13 +227,13 @@ function test_mjclient()
 	sk:connect("127.0.0.1", 6000)
 end
 
-function test_udpserver()
+local function test_udpserver()
 end
 
-function test_udpclient()
+local function test_udpclient()
 end
 
-function print_table(prefix, tbl)
+local function print_table(prefix, tbl)
 	print("@ " .. prefix)
 	for k, v in pairs(tbl) do
 		if not string.find(tostring(k), "__") then
@@ -241,7 +242,7 @@ function print_table(prefix, tbl)
 	end
 end
 
-function test_socklib_info()
+local function test_socklib_info()
 	print("---------------------test_socklib_info() {")
 
 	print("@ " .. socklib._VERSION)
@@ -252,6 +253,7 @@ function test_socklib_info()
 	print_table("socklib.buf", getmetatable(socklib.buf()))
 	print_table("socklib.EVT", socklib.EVT)
 	print_table("socklib.OPT", socklib.OPT)
+	print_table("socklib.FMT", socklib.FMT)
 	print_table("socklib.util", socklib.util)
 	print_table("socklib.util.md5", getmetatable(socklib.util.md5()))
 	print_table("socklib.util.sha1", getmetatable(socklib.util.sha1()))
@@ -263,7 +265,7 @@ end
 -- method/member name of obj which belongs to socklib is insensitive
 --		obj.XXX  == obj.xxx  == obj.XxX  ...
 --		obj:XX() == obj:xx() == obj:Xx() ...
-function test_socklib_nocase()
+local function test_socklib_nocase()
 	print("---------------------test_socklib_nocase() {")
 
 	print( socklib.TCP )
@@ -282,10 +284,65 @@ function test_socklib_nocase()
 	print("---------------------test_socklib_nocase() }")
 end
 
-test_socklib_info()
-test_socklib_nocase()
-
 --print( socklib.buf():w("123\12\44\AB").sha1 )
+--print( socklib.buf():w("sdf") )
+
+local function aaa()
+	local sk = socklib.tcp()
+
+	for k, v in pairs(sk) do
+--		if not string.find(tostring(k), "__") then
+			print("sk" .. "." .. tostring(k) .. "=" .. tostring(v))
+--		end
+	end
+
+--	sk.test = 123
+
+	local b1 = sk.inbuf b1:w("1") print(b1)
+	local b2 = sk.INbuf b2:w("2") print(b2)
+	local b3 = sk.inBUf b2:W("3") print(b3)
+
+	for k, v in pairs(sk) do
+--		if not string.find(tostring(k), "__") then
+			print("sk" .. "." .. tostring(k) .. "=" .. tostring(v))
+--		end
+	end
+	--b1 = b2 = b3 = nil
+	sk = nil
+end
+
+-- tmrId = socklib.util.setTimer(delay_msec, function(id, curloops, maxloops) end, max_loops = -1)
+-- socklib.util.delTimer(tmrId)
+--
+function test_util_timer()
+	local delay_msec = 1000
+	local max_loops = 5
+
+	socklib.util.setTimer(delay_msec, function(tmrId, curLoops)
+		print("timer5loops1 id = " .. tostring(tmrId) .. ", curLoops = " .. tostring(curLoops))
+	end, max_loops)
+
+	socklib.util.setTimer(1000, function(tmrId, curLoops, maxLoops)
+		print("timer5loops2 id = " .. tostring(tmrId) .. ", curLoops = " .. tostring(curLoops) .. ", maxLoops = " .. tostring(maxLoops))
+		return curLoops < 5
+	end)
+
+	local tmrId = socklib.util.setTimer(1000, function(tmrId, curLoops, maxLoops)
+		print("timer_todel id = " .. tostring(tmrId) .. ", curLoops = " .. tostring(curLoops) .. ", maxLoops = " .. tostring(maxLoops))
+	end, -1)
+
+	socklib.util.delTimer(tmrId)
+end
+
+--aaa()
+--collectgarbage("collect")
+
+print_table("_G", _G)
+
+test_socklib_info()
+--test_socklib_nocase()
+
+test_util_timer()
 
 --test_util_md5()
 --test_util_sha1()

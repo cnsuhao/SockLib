@@ -17,7 +17,7 @@
 
 // show debug message?
 #if !defined(SOCKLIB_DEBUG) && (defined(DEBUG) || defined(_DEBUG))
-#define SOCKLIB_DEBUG		1
+#define SOCKLIB_DEBUG		0
 #endif
 
 // enable CRC32 RC4 MD5 SHA1 BASE64... ?
@@ -30,7 +30,7 @@
 //		obj.XXX  == obj.xxx  == obj.XxX  ...
 //		obj:XX() == obj:xx() == obj:Xx() ...
 //
-// 		(affects obj belongs to socklib only)
+// 		(effect obj belongs to socklib only)
 //
 #ifndef SOCKLIB_NOCASE
 #define SOCKLIB_NOCASE		1
@@ -104,11 +104,18 @@ typedef unsigned char 		u8_t;
 typedef unsigned short 		u16_t;
 typedef unsigned int 		u32_t;
 typedef unsigned long long 	u64_t;
+typedef char		 		i8_t;
+typedef short 				i16_t;
+typedef int			 		i32_t;
+typedef long long 			i64_t;
 
 #if SOCKLIB_TO_LUA
 
 ///////////////////////////////////////////////////////////////////////////////
 // class LuaHelper
+//
+// TODO/TOFIX:
+//		for manage C++ ptr and LUA gc, maybe luaL_ref()/luaL_unref() is a better choose
 //
 class LuaHelper
 {
@@ -138,9 +145,10 @@ public:
 public:
 
 	template <typename T>
-	static int bind(lua_State* L, const std::string& name, T* bindObj) {
+	static int bindAsUdata(lua_State* L, const std::string& name, T* bindObj) {
 		T** obj = (T**) lua_newuserdata(L, sizeof(T*));
 		*obj = bindObj;
+		add(bindObj);
 		
 	#if LUA_VERSION_NUM == 501
 		luaL_getmetatable(L, name.c_str());
@@ -151,19 +159,80 @@ public:
 
 		return 1;
 	}
+
+	template <typename T>
+	static int bindAsTable(lua_State* L, const std::string& name, T* bindObj) {
+		lua_newtable(L);
+		
+		luaL_getmetatable(L, name.c_str());
+		lua_setmetatable(L, -2);
+
+		void* obj = lua_newuserdata(L, sizeof(T*));
+		*(T**) obj = bindObj;
+		add(bindObj);
+		
+	#if LUA_VERSION_NUM == 501
+		luaL_getmetatable(L, name.c_str());
+		lua_setmetatable(L, -2);
+	#else
+		luaL_setmetatable(L, name.c_str());
+	#endif
+		
+		lua_setfield(L, -2, "__cppudata__");
+
+		return 1;
+	}
 	
 	template <typename T, typename... Args>
+	static int createAsUdata(lua_State* L, const std::string& name, Args... args) {
+		return bindAsUdata<T>(L, name, new T(args...));
+	}
+	
+	template <typename T, typename... Args>
+	static int createAsTable(lua_State* L, const std::string& name, Args... args) {
+		return bindAsTable<T>(L, name, new T(args...));
+	}
+
+public: // default
+#if 1 // create C++ class as LUA table
+	template <typename T, typename... Args>
 	static int create(lua_State* L, const std::string& name, Args... args) {
-		T* p = new T(args...);
-		add(p);
-		return bind<T>(L, name, p);
+		return createAsTable<T>(L, name, args...);
 	}
 
 	template <typename T>
-	static T* get(lua_State* L, const std::string& name, int idx = 1) {
-		return *(T**)luaL_checkudata(L, idx, name.c_str());
+	static int bind(lua_State* L, const std::string& name, T* bindObj) {
+		return bindAsTable<T>(L, name, bindObj);
+	}
+#else // create C++ class as LUA userdata
+	template <typename T, typename... Args>
+	static int create(lua_State* L, const std::string& name, Args... args) {
+		return createAsUdata<T>(L, name, args...);
 	}
 
+	template <typename T>
+	static int bind(lua_State* L, const std::string& name, T* bindObj) {
+		return bindAsUdata<T>(L, name, bindObj);
+	}
+#endif
+
+	template <typename T>
+	static T* get(lua_State* L, const std::string& name, int idx = 1) {
+		if (lua_istable(L, idx)) {
+			lua_getfield(L, idx, "__cppudata__");
+//			T* _this = *(T**)lua_touserdata(L, -1);
+			T* _this = *(T**)luaL_checkudata(L, -1, name.c_str());
+			lua_pop(L, 1);
+			return _this;
+		} else if (lua_isuserdata(L, 1)) {
+			return *(T**)luaL_checkudata(L, idx, name.c_str());
+		} else {
+			luaL_error(L, "LuaHelper::get<>() unknow data");
+			return nullptr;
+		}
+	}
+
+public:
 	static void newMetatable(lua_State* L, const std::string& name, const luaL_Reg* reg)
 	{
 		luaL_newmetatable(L, name.c_str());
@@ -198,6 +267,7 @@ class SockBuf;
 
 //typedef std::shared_ptr<SockRef> SockPtr;
 typedef SockRef* SockPtr;
+
 
 ///////////////////////////////////////////////////////////////////////////////
 // class SockLib
@@ -248,7 +318,7 @@ public:
 	}
 	
 	template <typename... Args>
-	static SockTcp* createUdp(Args... args) {
+	static SockUdp* createUdp(Args... args) {
 		return create<SockUdp>(args...);
 	}
 
@@ -324,6 +394,9 @@ public:
 	int careEvent() { return _careEvent; }
 	int fireEvent() { return _fireEvent; }
 	
+	virtual bool careSend() { return true; }
+	virtual bool careRecv() { return true; }
+	
 	int setNonBlock(bool b);
 	int setReuseAddr(bool b);
 	int setBroadcast(bool b);
@@ -339,6 +412,7 @@ public:
 public:
 	virtual void onConnect(bool ok) {}
 	virtual void onAccept() {}
+	virtual void onPoll() 	{}
 	virtual void onRecv()	= 0;
 	virtual void onSend()	= 0;
 	virtual void onClose()	= 0;
@@ -387,12 +461,15 @@ public:
 	SockBuf* recvBuf() { return _recvBuf; }
 	SockBuf* sendBuf() { return _sendBuf; }
 
+	bool careSend();
+
 public:
 	virtual void onConnect(bool ok);
 	virtual void onAccept();
 	virtual void onRecv();
 	virtual void onSend();
 	virtual void onClose();
+	virtual void onPoll();
 
 protected:
 	SockBuf*	_recvBuf;
@@ -421,11 +498,12 @@ public:
 	static int mylua_tostring(lua_State* L);
 	
 private:
-	int _mylua_onConnect = 0;
-	int _mylua_onRecv = 0;
-	int _mylua_onSend = 0;
-	int _mylua_onAccept = 0;
-	int _mylua_onClose = 0;
+	int _mylua_onConnect = -1;
+	int _mylua_onRecv = -1;
+	int _mylua_onSend = -1;
+	int _mylua_onAccept = -1;
+	int _mylua_onClose = -1;
+	int _mylua_onPoll = -1;
 #endif // SOCKLIB_TO_LUA
 };
 
@@ -448,6 +526,7 @@ public:
 	virtual void onRecv();
 	virtual void onSend();
 	virtual void onClose();
+	virtual void onPoll();
 
 private:
 	
@@ -469,9 +548,10 @@ public:
 	static int mylua_tostring(lua_State* L);
 	
 private:
-	int _mylua_onRecv = 0;
-	int _mylua_onSend = 0;
-	int _mylua_onClose = 0;
+	int _mylua_onRecv = -1;
+	int _mylua_onSend = -1;
+	int _mylua_onClose = -1;
+	int _mylua_onPoll = -1;
 
 #endif // SOCKLIB_TO_LUA
 };
@@ -898,9 +978,6 @@ public:
 	static int mylua_process(lua_State* L);
 	static int mylua_gc(lua_State* L);
 	static int mylua_tostring(lua_State* L);
-	#if SOCKLIB_NOCASE
-	static int mylua_index(lua_State* L);
-	#endif
 #endif // SOCKLIB_TO_LUA
 };
 
@@ -964,9 +1041,6 @@ public:
 	static int mylua_final(lua_State* L);
 	static int mylua_gc(lua_State* L);
 	static int mylua_tostring(lua_State* L);
-	#if SOCKLIB_NOCASE
-	static int mylua_index(lua_State* L);
-	#endif
 #endif // SOCKLIB_TO_LUA
 };
 
@@ -1024,9 +1098,6 @@ public:
 	static int mylua_final(lua_State* L);
 	static int mylua_gc(lua_State* L);
 	static int mylua_tostring(lua_State* L);
-	#if SOCKLIB_NOCASE
-	static int mylua_index(lua_State* L);
-	#endif
 #endif // SOCKLIB_TO_LUA
 };
 
@@ -1044,6 +1115,52 @@ std::string Base64_decode(const char* sz, u32_t len = 0);
 #endif // SOCKLIB_ALG
 
 ///////////////////////////////////////////////////////////////////////////////
+// class Timer
+//
+class Timer {
+public:
+	typedef std::function<bool(Timer& tmr)> Callback;
+	typedef std::map<u64_t, Timer> TimerMap;
+	typedef std::map<u64_t, int> TmrIdMap;
+	
+	static u64_t add(Timer& tmr);
+	static void remove(u64_t tmrId);
+	static void poll();
+	
+	void	onTick(u64_t tick);
+	
+	void 	cancel() { remove(_timerId); }
+	
+	u64_t	timerId() { return _timerId; }
+	u64_t	interval() { return _interval; }
+	i64_t	curLoops() { return _curLoops; }
+	i64_t	maxLoops() { return _maxLoops; }
+	
+private:
+	static TimerMap _refs;
+	static TimerMap _news;
+	static TmrIdMap _dies;
+	
+#if SOCKLIB_TO_LUA
+	static TmrIdMap _mylua_refs;
+#endif
+
+private:
+	u64_t 	_timerId = 0;
+	u64_t	_curTick = 0;
+	u64_t	_interval = 0;
+	i64_t   _curLoops = 0;
+	i64_t	_maxLoops = 0;
+	Callback _callback = nullptr;
+	
+#if SOCKLIB_TO_LUA
+	int 	_mylua_ref = -1;
+#endif
+
+	friend class Util;
+};
+
+///////////////////////////////////////////////////////////////////////////////
 // class Util
 //
 class Util
@@ -1057,7 +1174,15 @@ public:
 	static std::string	urlenc(const std::string& url);
 	static std::string	urldec(const std::string& url);
 
+	static u64_t setTimer(u64_t delayMsec, i64_t maxLoops, const Timer::Callback& func);
+	static void	 delTimer(u64_t tmrId);
+	
+	static void poll();
+
 #if SOCKLIB_TO_LUA
+	static bool _onTimerCallback(Timer& tmr);
+	
+public:
 	#if SOCKLIB_ALG
 	static int mylua_crc32(lua_State* L);
 	static int mylua_rc4(lua_State* L);
@@ -1068,11 +1193,17 @@ public:
 	#endif // SOCKLIB_ALG
 
 	static int mylua_u32op(lua_State* L);
+
 	static int mylua_tick(lua_State* L);
+
 	static int mylua_urlenc(lua_State* L);
 	static int mylua_urldec(lua_State* L);
+
 	static int mylua_ips2n(lua_State* L);
 	static int mylua_ipn2s(lua_State* L);
+
+	static int mylua_settimer(lua_State* L);
+	static int mylua_deltimer(lua_State* L);
 	
 	static int mylua_htons(lua_State* L);
 	static int mylua_ntohs(lua_State* L);
