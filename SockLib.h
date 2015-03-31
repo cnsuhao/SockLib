@@ -134,13 +134,6 @@ public:
 	static bool found(Object* obj) {
 		return _objs.find(obj) != _objs.end();
 	}
-
-public:
-	static void debugScriptFile(lua_State* L, const std::string& file)
-	{
-		luaL_loadfile(L, file.c_str());
-		lua_call(L, 0, LUA_MULTRET);
-	}
 	
 public:
 
@@ -281,10 +274,10 @@ private:
 public:
 	enum {
 		EVT_NONE	= 0,
-		EVT_RECV 	= 1 << 1,
-		EVT_SEND 	= 1 << 2,
-		EVT_CLOSE	= 1 << 3,
-		EVT_ERROR	= 1 << 4,
+		EVT_RECV 	= 1 << 0,
+		EVT_SEND 	= 1 << 1,
+		EVT_CLOSE	= 1 << 2,
+		EVT_ERROR	= 1 << 3,
 		EVT_ALL		= EVT_RECV | EVT_SEND | EVT_CLOSE,
 	};
 	
@@ -316,10 +309,16 @@ public:
 	static SockTcp* createTcp(Args... args) {
 		return create<SockTcp>(args...);
 	}
+	static SockTcp* createTcp() {
+		return create<SockTcp>();
+	}
 	
 	template <typename... Args>
 	static SockUdp* createUdp(Args... args) {
 		return create<SockUdp>(args...);
+	}
+	static SockUdp* createUdp() {
+		return create<SockUdp>();
 	}
 
 	static void destroy(SockPtr ref);
@@ -334,7 +333,7 @@ public:
 	static const char* libName() { return _libName.c_str(); }
 
 protected:
-    static int _poll_per_FD_SETSIZE(SockMap::iterator begin, SockMap::iterator end, u32_t usec = 10);
+    static int _poll_per_FD_SETSIZE(SockMap::iterator& begin, u32_t usec = 10);
 	static void beforePoll();
 	static void afterPoll() { dispatch(); }
 	static void dispatch();
@@ -351,21 +350,37 @@ protected:
 	static std::string	_libName;
 	
 #if SOCKLIB_TO_LUA
+// call @C++
 public:
-
-	static int mylua_regAs(lua_State* L, const char* libName);
-	static int mylua_reg(lua_State* L) { return mylua_regAs(L, SOCKLIB_NAME); }
+	static int luaRegLib(lua_State* L, const char* libName = SOCKLIB_NAME);
 	
+	static bool luaAddPath(lua_State* L, const std::string& path);
+	static bool luaAddPath(const std::string& path) {
+		return luaAddPath(luaState(), path);
+	}
+
+	static int luaLoadFile(lua_State* L, const std::string& file, bool protect = true);
+	static int luaLoadFile(const std::string& file, bool protect = false) {
+		return luaLoadFile(luaState(), file, protect);
+	}
+
+	static int luaLoadString(lua_State* L, const std::string& str, bool protect = true);
+	static int luaLoadString(const std::string& str, bool protect = false) {
+		return luaLoadString(luaState(), str, protect);
+	}
+	
+	static lua_State* luaState() { return _luaState; }
+
+// call @LUA
+public:
 	static int mylua_tcp(lua_State* L);
 	static int mylua_udp(lua_State* L);
 	static int mylua_buf(lua_State* L);
 	
 	static int mylua_poll(lua_State* L);
-
-	static lua_State* luaState() { return _luaState; }
 	
 private:
-	static lua_State*	_luaState;
+	static lua_State* _luaState;
 #endif // SOCKLIB_TO_LUA
 };
 
@@ -480,13 +495,17 @@ protected:
 #if SOCKLIB_TO_LUA
 	friend LuaHelper;
 
+// call @C++
 public:
 	static SockTcp* mylua_this(lua_State* L, int idx = 1);
-
+	
+// call @LUA
+public:
 	static int mylua_connect(lua_State* L);
 	static int mylua_listen(lua_State* L);
 	static int mylua_accept(lua_State* L);
 	static int mylua_close(lua_State* L);
+	static int mylua_isclosed(lua_State* L);
 	static int mylua_send(lua_State* L);
 	static int mylua_recv(lua_State* L);
 	static int mylua_inbuf(lua_State* L);
@@ -535,9 +554,12 @@ private:
 #if SOCKLIB_TO_LUA
 	friend LuaHelper;
 
+// call @C++
 public:
 	static SockUdp* mylua_this(lua_State* L, int idx = 1);
 
+// call @LUA
+public:
 	static int mylua_sendto(lua_State* L);
 	static int mylua_recvfrom(lua_State* L);
 	static int mylua_close(lua_State* L);
@@ -849,9 +871,12 @@ protected:
 #if SOCKLIB_TO_LUA
 	friend LuaHelper;
 
+// call @C++
 public:
 	static SockBuf* mylua_this(lua_State* L, int idx = 1);
 
+// call @LUA
+public:
 	static int mylua_reset(lua_State* L);
 	static int mylua_skip(lua_State* L);
 	static int mylua_discard(lua_State* L);
@@ -973,6 +998,7 @@ private:
 	u8_t _s[256];
 	
 #if SOCKLIB_TO_LUA
+// call @LUA
 public:
 	static int mylua_setkey(lua_State* L);
 	static int mylua_process(lua_State* L);
@@ -1035,6 +1061,7 @@ private:
 	u8_t	_buffer[64];
 	
 #if SOCKLIB_TO_LUA
+// call @LUA
 public:
 	static int mylua_init(lua_State* L);
 	static int mylua_update(lua_State* L);
@@ -1092,6 +1119,7 @@ private:
 	u8_t	_buffer[64];
 	
 #if SOCKLIB_TO_LUA
+// call @LUA
 public:
 	static int mylua_init(lua_State* L);
 	static int mylua_update(lua_State* L);
@@ -1174,7 +1202,7 @@ public:
 	static std::string	urlenc(const std::string& url);
 	static std::string	urldec(const std::string& url);
 
-	static u64_t setTimer(u64_t delayMsec, i64_t maxLoops, const Timer::Callback& func);
+	static u64_t setTimer(u64_t delayMsec, const Timer::Callback& func, i64_t maxLoops = -1);
 	static void	 delTimer(u64_t tmrId);
 	
 	static void poll();
@@ -1182,6 +1210,7 @@ public:
 #if SOCKLIB_TO_LUA
 	static bool _onTimerCallback(Timer& tmr);
 	
+// call @LUA
 public:
 	#if SOCKLIB_ALG
 	static int mylua_crc32(lua_State* L);

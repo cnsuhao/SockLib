@@ -207,26 +207,6 @@ local function test_tcpclient()
 	print("---------------------test_http() }")
 end
 
-local function test_mjclient()
-	local EVT = socklib.EVT
-	local U32OP = socklib.util.u32op
-
-	sk = socklib.tcp()
-
-	sk:onevent(EVT.CONNECT, function(evt)
-
-		local ver = U32OP(U32OP(U32OP(1, "<<", 16), "|", U32OP(1, "<<", 8)), "|", 1)
-		local flg = 2
-
-		sk.outbuf:w("GmCltMJ\0", 8):w32(ver):w32(flg):w("12345678901234567890", 16):w(string.rep("\0", 32))
-	end)
-
-	sk:onevent(EVT.CLOSE, function(evt)
-	end)
-
-	sk:connect("127.0.0.1", 6000)
-end
-
 local function test_udpserver()
 end
 
@@ -322,10 +302,14 @@ function test_util_timer()
 		print("timer5loops1 id = " .. tostring(tmrId) .. ", curLoops = " .. tostring(curLoops))
 	end, max_loops)
 
-	socklib.util.setTimer(1000, function(tmrId, curLoops, maxLoops)
-		print("timer5loops2 id = " .. tostring(tmrId) .. ", curLoops = " .. tostring(curLoops) .. ", maxLoops = " .. tostring(maxLoops))
-		return curLoops < 5
+	socklib.util.setTimer(1000, function(id, c, m)
+		print("timer5loops2 id = " .. tostring(id) .. ", curLoops = " .. tostring(c) .. ", maxLoops = " .. tostring(m))
+		return curLoops < 5 -- return false to stop
 	end)
+
+	socklib.util.setTimer(delay_msec, function()
+		print("timer10loops1")
+	end, 10)
 
 	local tmrId = socklib.util.setTimer(1000, function(tmrId, curLoops, maxLoops)
 		print("timer_todel id = " .. tostring(tmrId) .. ", curLoops = " .. tostring(curLoops) .. ", maxLoops = " .. tostring(maxLoops))
@@ -337,10 +321,10 @@ end
 --aaa()
 --collectgarbage("collect")
 
-print_table("_G", _G)
+--print_table("_G", _G)
 
 test_socklib_info()
---test_socklib_nocase()
+test_socklib_nocase()
 
 test_util_timer()
 

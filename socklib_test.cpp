@@ -21,17 +21,19 @@ int main(int argc, const char * argv[])
 	luaL_openlibs(L);
 	
 #if SOCKLIB_TO_LUA
-//	socklib::SockLib::mylua_regAs(L, "socklib");
-	socklib::SockLib::mylua_reg(L);
-	
-//	socklib::SockTcp* tcp = socklib::SockLib::createTcp<>();
+//	socklib::SockLib::luaRegLib(L, "socklib");
+	socklib::SockLib::luaRegLib(L);
+#else
+//	socklib::SockTcp* tcp = socklib::SockLib::createTcp();
 //	socklib::SockLib::destroy(tcp);
 #endif
 	
 #if 1 && SOCKLIB_TO_LUA
-//	luaL_dofile(L, "socklib_test.lua");
-//	socklib::LuaHelper::debugScriptFile(L, "socklib_test.lua");
-	socklib::LuaHelper::debugScriptFile(L, "/Users/LX/CC/MyLua/MyLua51Test/scripts/socklib_test.lua");
+	socklib::SockLib::luaAddPath("/Users/LX/CC/MyLua/MyLua51Test/scripts/?.lua");
+	
+//	socklib::SockLib::luaLoadFile("socklib_test.lua", false);
+	socklib::SockLib::luaLoadFile("/Users/LX/CC/MyLua/MyLua51Test/scripts/App.lua", false);
+//	socklib::SockLib::luaLoadFile("/Users/LX/CC/MyLua/MyLua51Test/scripts/Net/Handler.lua", false);
 
 	while (1) {
 		socklib::SockLib::poll();
