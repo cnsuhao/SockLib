@@ -115,7 +115,7 @@ typedef long long 			i64_t;
 // class LuaHelper
 //
 // TODO/TOFIX:
-//		for manage C++ ptr and LUA gc, maybe luaL_ref()/luaL_unref() is a better choose
+//		to manage C++ ptr and LUA gc, maybe luaL_ref()/luaL_unref() is a better choose
 //
 class LuaHelper
 {
@@ -381,6 +381,8 @@ public:
 	
 private:
 	static lua_State* _luaState;
+	
+	LuaHelper _luaHelper;
 #endif // SOCKLIB_TO_LUA
 };
 
@@ -440,6 +442,7 @@ protected:
 	int _fd = -1;
 	
 	friend SockLib;
+	
 #if SOCKLIB_TO_LUA
 	friend LuaHelper;
 #endif
@@ -458,16 +461,23 @@ public:
 	int create();
 	
 	int connect(const std::string& host, u16_t port);
-
-	int send(const void* buf, u32_t len, int flags = 0);
-	int recv(void* buf, u32_t len, int flags = 0);
+	int connect(u32_t ip, u16_t port);
+	int connect(const sockaddr_in* addr);
 	
 	int bind(const std::string& ip, u16_t port);
+	int bind(u32_t ip, u16_t port);
+	int bind(const sockaddr_in* addr);
 	int bind(u16_t port) { return bind("", port); }
+	
 	int listen(int logs = 5);
 	
-	int accept(SockTcp* client);
+	int accept(sockaddr_in* addr);
 	
+	void acceptfd(int fd);
+	
+	int send(const void* buf, u32_t len, int flags = 0);
+	int recv(void* buf, u32_t len, int flags = 0);
+
 	void close();
 
 	int doRecv();
@@ -477,6 +487,13 @@ public:
 	SockBuf* sendBuf() { return _sendBuf; }
 
 	bool careSend();
+	
+	int getSockAddr(u32_t* ip, u16_t* port);
+	int getSockAddr(std::string& ip, u16_t* port);
+	int getSockAddr(sockaddr_in* addr);
+	int getPeerAddr(u32_t* ip, u16_t* port);
+	int getPeerAddr(std::string& ip, u16_t* port);
+	int getPeerAddr(sockaddr_in* addr);
 
 public:
 	virtual void onConnect(bool ok);
@@ -512,6 +529,8 @@ public:
 	static int mylua_outbuf(lua_State* L);
 	static int mylua_onevent(lua_State* L);
 	static int mylua_setopt(lua_State* L);
+	static int mylua_sockaddr(lua_State* L);
+	static int mylua_peeraddr(lua_State* L);
 	static int mylua_index(lua_State* L);
 	static int mylua_gc(lua_State* L);
 	static int mylua_tostring(lua_State* L);
@@ -538,8 +557,18 @@ protected:
 public:
 	int create();
 	
-	int sendTo(const std::string& host, u16_t port, const char* data, u32_t len);
-	int recvFrom();
+	// UDP can connect() first then send(), but we don't use it
+	
+	int sendto(const std::string& host, u16_t port, const void* data, u32_t len);
+	int sendto(u32_t ip, u16_t port, const void* data, u32_t len);
+	int sendto(const sockaddr_in* addr, const void* data, u32_t len);
+	
+	int recvfrom(void* data, u32_t len) {
+		return recvfrom(data, len, (sockaddr_in*)0);
+	}
+	int recvfrom(void* data, u32_t len, u32_t* ip, u16_t* port);
+	int recvfrom(void* data, u32_t len, std::string& ip, u16_t* port);
+	int recvfrom(void* data, u32_t len, sockaddr_in* addr);
 	
 public:
 	virtual void onRecv();
@@ -760,16 +789,17 @@ public:
 		char* p = beg;
 		u32_t l = len();
 
-		if (!p || !l) return 0;
+		if (!p || !l) return "";
 
 		while (l && *p) {
 			p++; l--;
 		}
 		if (*p == 0) {
-			_pos_r += p - beg + 1;
+			_pos_r += p - beg;
+			if (len()) _pos_r += 1;
 			return beg;
 		}
-		return 0;
+		return "";
 	}
 	
 	const char*	rsl() {
@@ -1197,8 +1227,11 @@ public:
 	static u64_t 		tick();
 	
 	static std::string	ipn2s(u32_t ip);
-	static u32_t 		ips2n(const std::string& ip);
+	static u32_t 		ips2n(const std::string& addr);
 	
+	// probe from cache
+	static u32_t 		ipprobe(const std::string& addr);
+
 	static std::string	urlenc(const std::string& url);
 	static std::string	urldec(const std::string& url);
 
@@ -1206,6 +1239,32 @@ public:
 	static void	 delTimer(u64_t tmrId);
 	
 	static void poll();
+	
+	static void addr2ips(const sockaddr_in* addr, std::string& ip, u16_t* port);
+	static void addr2ipn(const sockaddr_in* addr, u32_t* ip, u16_t* port);
+	static void ips2addr(const std::string& ip, u16_t port, sockaddr_in* addr);
+	static void ipn2addr(u32_t ip, u16_t port, sockaddr_in* addr);
+	
+private:
+	typedef std::map<const std::string, u32_t> IPCache;
+	static IPCache _ipcache;
+	static std::mutex _ipmutex;
+	
+	struct AutoMutex {
+		AutoMutex(std::mutex& mutex) : _mutex(mutex) {
+			_mutex.lock();
+		}
+		~AutoMutex() {
+			_mutex.unlock();
+		}
+		
+	private:
+		AutoMutex(const AutoMutex& r);
+		AutoMutex& operator = (const AutoMutex& r);
+		
+	private:
+		std::mutex& _mutex;
+	};
 
 #if SOCKLIB_TO_LUA
 	static bool _onTimerCallback(Timer& tmr);
@@ -1230,6 +1289,8 @@ public:
 
 	static int mylua_ips2n(lua_State* L);
 	static int mylua_ipn2s(lua_State* L);
+
+	static int mylua_ipprobe(lua_State* L);
 
 	static int mylua_settimer(lua_State* L);
 	static int mylua_deltimer(lua_State* L);

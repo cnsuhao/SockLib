@@ -8,6 +8,7 @@
 #include "SockLib.h"
 
 #include <assert.h>
+#include <thread>
 
 #ifdef _WIN32
 	#include <time.h>
@@ -226,6 +227,7 @@ int SockLib::_poll_per_FD_SETSIZE(SockMap::iterator& it_begin, u32_t usec)
 		}
 
 		++it_count;
+//		std::cout << "it_count=" << it_count << std::endl;
 
         int ev = sk->careEvent();
         
@@ -346,17 +348,18 @@ static const luaL_Reg SockLib_Reg[] = {
 
 static const luaL_Reg SockTcp_Reg[] = {
 	{ "connect", 	SockTcp::mylua_connect },
-	{ "close", 		SockTcp::mylua_close },
 	{ "listen", 	SockTcp::mylua_listen },
-	{ "accept", 	SockTcp::mylua_close },
+	{ "accept", 	SockTcp::mylua_accept },
 	{ "send", 		SockTcp::mylua_send },
 	{ "recv", 		SockTcp::mylua_recv },
-	{ "accept", 	SockTcp::mylua_close },
 //	{ "inbuf", 		SockTcp::mylua_inbuf },		// __index do it
 //	{ "outbuf", 	SockTcp::mylua_outbuf },	// __index do it
+	{ "close", 		SockTcp::mylua_close },
 	{ "isclosed", 	SockTcp::mylua_isclosed },
 	{ "onevent", 	SockTcp::mylua_onevent },
 	{ "setopt", 	SockTcp::mylua_setopt },
+	{ "sockaddr",	SockTcp::mylua_sockaddr },
+	{ "peeraddr",	SockTcp::mylua_peeraddr },
 //	{ "__eq", 		SockTcp::mylua_eq },
 	{ "__index", 	SockTcp::mylua_index },
 	{ "__gc", 		SockTcp::mylua_gc },
@@ -436,6 +439,7 @@ static const luaL_Reg SockUtil_Reg[] = {
 	{ "urldec",		Util::mylua_urldec },
 	{ "ips2n",		Util::mylua_ips2n },
 	{ "ipn2s",		Util::mylua_ipn2s },
+	{ "ipprobe",	Util::mylua_ipprobe },
 	{ "settimer", 	Util::mylua_settimer },
 	{ "deltimer", 	Util::mylua_deltimer },
 	{ "htons",		Util::mylua_htons },
@@ -652,10 +656,13 @@ int SockLib::luaLoadFile(lua_State* L, const std::string& file, bool protect)
 {
 	int ret = luaL_loadfile(L, file.c_str());
 	if (ret == 0) {
-		if (protect)
+		if (protect) {
 			ret = lua_pcall(L, 0, LUA_MULTRET, 0);
-		else
+		} else {
 			lua_call(L, 0, LUA_MULTRET);
+		}
+	} else {
+		DBGLOG("SockLib::luaLoadFile(\"%s, %s\") failed\n", file.c_str(), protect ? "true" : "false");
 	}
 	return ret;
 }
@@ -666,10 +673,13 @@ int SockLib::luaLoadString(lua_State* L, const std::string& str, bool protect)
 {
 	int ret = luaL_loadstring(L, str.c_str());
 	if (ret == 0) {
-		if (protect)
+		if (protect) {
 			ret = lua_pcall(L, 0, LUA_MULTRET, 0);
-		else
+		} else {
 			lua_call(L, 0, LUA_MULTRET);
+		}
+	} else {
+		DBGLOG("SockLib::luaLoadString(\"%s\", %s) failed\n", str.c_str(), protect ? "true" : "false");
 	}
 	return ret;
 }
@@ -1021,6 +1031,30 @@ void SockTcp::close()
 //
 int SockTcp::connect(const std::string& host, u16_t port)
 {
+	DBGLOG("%s{fd=%d}:connect(%s:%d)\n", SOCKLIB_TCP.c_str(), fd(), host.c_str(), port);
+
+	u32_t ip = Util::ips2n(host);
+	
+	return connect(ip, port);
+}
+
+//----------------------------------------------------------------------------
+//
+int SockTcp::connect(u32_t ip, u16_t port)
+{
+	sockaddr_in addr = { 0 };
+	addr.sin_len		 = sizeof(addr);
+	addr.sin_family      = PF_INET;
+	addr.sin_addr.s_addr = ip;
+	addr.sin_port        = htons(port);
+	
+	return connect(&addr);
+}
+
+//----------------------------------------------------------------------------
+//
+int SockTcp::connect(const sockaddr_in* addr)
+{
 	if (fd() <= 0 && create() <= 0)
 		return -1;
 	
@@ -1029,18 +1063,9 @@ int SockTcp::connect(const std::string& host, u16_t port)
 	
 	setNonBlock(true);
 
-	sockaddr_in addr = { 0 };
-
-	addr.sin_len		 = sizeof(addr);
-	addr.sin_family      = PF_INET;
-	addr.sin_addr.s_addr = Util::ips2n(host.c_str());
-	addr.sin_port        = htons(port);
-
 	_sockState = SockLib::STA_CONNECTTING;
 	
-	DBGLOG("%s{fd=%d}:connect(%s:%d)\n", SOCKLIB_TCP.c_str(), fd(), host.c_str(), port);
-
-	int r = ::connect(fd(), (struct sockaddr*)&addr, sizeof(addr));
+	int r = ::connect(fd(), (struct sockaddr*)addr, sizeof(*addr));
 	
 	if (SOCKET_ERROR == r) {
 		int err = getError();
@@ -1074,35 +1099,66 @@ int SockTcp::bind(const std::string& ip, u16_t port)
 	if (ip.length() > 0)
 		ipn = Util::ips2n(ip);
 	
-	sockaddr_in addr = { 0 };
-	addr.sin_family      = AF_INET;
-	addr.sin_addr.s_addr = ipn;
-	addr.sin_port        = htons(port);
-	
-	setReuseAddr(true);
-
-	return ::bind(fd(), (struct sockaddr*)&addr, sizeof(addr));
+	return bind(ipn, port);
 }
 
+//----------------------------------------------------------------------------
+//
+int SockTcp::bind(u32_t ip, u16_t port)
+{
+	sockaddr_in addr = { 0 };
+	addr.sin_len		 = sizeof(addr);
+	addr.sin_family      = AF_INET;
+	addr.sin_addr.s_addr = ip;
+	addr.sin_port        = htons(port);
+	
+	return bind(&addr);
+}
+
+//----------------------------------------------------------------------------
+//
+int SockTcp::bind(const sockaddr_in* addr)
+{
+	setReuseAddr(true);
+
+	return ::bind(fd(), (struct sockaddr*)addr, sizeof(*addr));
+}
 //----------------------------------------------------------------------------
 //
 int SockTcp::listen(int n)
 {
-	if (fd() <= 0 && create() <= 0)
+	if (fd() <= 0)
 		return -1;
-
+	
 	DBGLOG("%s{fd=%d}:listen(%d)\n", SOCKLIB_TCP.c_str(), fd(), n);
 
-	return 0;
+	int r = ::listen(fd(), n);
+	
+	if (SOCKET_ERROR != r) {
+		_sockState = SockLib::STA_LISTENED;
+		SockLib::add(this, SockLib::EVT_RECV);
+	}
+	
+	return r;
 }
 
 //----------------------------------------------------------------------------
 //
-int SockTcp::accept(SockTcp* client)
+int SockTcp::accept(sockaddr_in* addr)
 {
 	DBGLOG("%s{fd=%d}:close()\n", SOCKLIB_TCP.c_str(), fd());
+	
+	addr->sin_len = sizeof(*addr);
+	socklen_t len = sizeof(*addr);
+	
+	return ::accept(fd(), (struct sockaddr*)addr, &len);
+}
 
-	return 0;
+void SockTcp::acceptfd(int fd)
+{
+	_fd = fd;
+	_sockState = SockLib::STA_ACCEPTED;
+	SockLib::add(this, SockLib::EVT_ALL);
 }
 
 //----------------------------------------------------------------------------
@@ -1123,6 +1179,72 @@ int SockTcp::recv(void* buf, u32_t len, int flags)
 //
 bool SockTcp::careSend() {
 	return _sockState == SockLib::STA_CONNECTTING || _sendBuf->len() > 0;
+}
+
+//----------------------------------------------------------------------------
+//
+int SockTcp::getSockAddr(u32_t* ip, u16_t* port)
+{
+	sockaddr_in addr;
+	int r = getSockAddr(&addr);
+	if (r != SOCKET_ERROR) {
+		Util::addr2ipn(&addr, ip, port);
+	} else {
+		if (ip) *ip = 0;
+		if (port) *port = 0;
+	}
+	return r;
+}
+
+int SockTcp::getSockAddr(std::string& ip, u16_t* port)
+{
+	sockaddr_in addr;
+	int r = getSockAddr(&addr);
+	if (r != SOCKET_ERROR) {
+		Util::addr2ips(&addr, ip, port);
+	} else {
+		ip = "";
+		if (port) *port = 0;
+	}
+	return r;
+}
+
+int SockTcp::getSockAddr(sockaddr_in* addr)
+{
+	socklen_t addrlen = sizeof(sockaddr_in);
+	return ::getsockname(fd(), (struct sockaddr*)addr, &addrlen);
+}
+
+int SockTcp::getPeerAddr(u32_t* ip, u16_t* port)
+{
+	sockaddr_in addr;
+	int r = getPeerAddr(&addr);
+	if (r != SOCKET_ERROR) {
+		Util::addr2ipn(&addr, ip, port);
+	} else {
+		if (ip) *ip = 0;
+		if (port) *port = 0;
+	}
+	return r;
+}
+
+int SockTcp::getPeerAddr(std::string& ip, u16_t* port)
+{
+	sockaddr_in addr;
+	int r = getSockAddr(&addr);
+	if (r != SOCKET_ERROR) {
+		Util::addr2ips(&addr, ip, port);
+	} else {
+		ip = "";
+		if (port) *port = 0;
+	}
+	return r;
+}
+
+int SockTcp::getPeerAddr(sockaddr_in* addr)
+{
+	socklen_t addrlen = sizeof(sockaddr_in);
+	return ::getpeername(fd(), (struct sockaddr*)addr, &addrlen);
 }
 
 //----------------------------------------------------------------------------
@@ -1332,47 +1454,67 @@ int SockTcp::mylua_connect(lua_State* L)
 {
 	SockTcp* _this = mylua_this(L);
 	
-	const char* host = luaL_checkstring(L, 2);
-	lua_Integer port = luaL_checkinteger(L, 3);
-	
-	int n = _this->connect(host, port);
-	
-	lua_pushinteger(L, n);
+	if (lua_isnumber(L, 2)) {
+		u32_t ip = (u32_t)lua_tonumber(L, 2);
+		u16_t port = (u16_t)luaL_checkinteger(L, 3);
+		
+		int n = _this->connect(ip, port);
+		
+		lua_pushinteger(L, n);
+	} else {
+		const char* host = luaL_checkstring(L, 2);
+		u16_t port = (u16_t)luaL_checkinteger(L, 3);
+		
+		int n = _this->connect(host, port);
+		
+		lua_pushinteger(L, n);
+	}
 
 	return 1;
 }
 
 //----------------------------------------------------------------------------
-// listen(port, logs, ip)
+// listen(port)
+// listen(ip, port, logs)
 //
 int SockTcp::mylua_listen(lua_State* L)
 {
 	SockTcp* _this = mylua_this(L);
 	
-	u16_t port = (u16_t)luaL_checkinteger(L, 1);
+	u16_t port;
 	int logs = 5;
 	const char* ip = 0;
 	
-	if (lua_gettop(L) >= 2)
-		logs = (int) luaL_checkinteger(L, 2);
-	if (lua_gettop(L) >= 3)
-		ip = luaL_checkstring(L, 3);
-
-	int r;
+	if (lua_gettop(L) == 2) {
+		port = (u16_t)luaL_checkinteger(L, 2);
+	} else if (lua_gettop(L) >= 3) {
+		ip = luaL_checkstring(L, 2);
+		port = (u16_t)luaL_checkinteger(L, 3);
+		if (lua_gettop(L) >= 4)
+			logs = (int)luaL_checkinteger(L, 4);
+	} else {
+		luaL_error(L, "%s.listen() bad data", SOCKLIB_TCP.c_str());
+		return 1;
+	}
+	
+	int r = _this->create();
+	if (SOCKET_ERROR == r) {
+		lua_pushvalue(L, 1);
+		lua_pushfstring(L, "create socket failed");
+		return 2;
+	}
 	
 	if (ip && ip[0]) {
 		r = _this->bind(ip, port);
-
 		if (SOCKET_ERROR == r) {
-			lua_pushboolean(L, false);
+			lua_pushvalue(L, 1);
 			lua_pushfstring(L, "bind %s:%d failed", ip, port);
 			return 2;
 		}
 	} else {
 		r = _this->bind(port);
-
 		if (SOCKET_ERROR == r) {
-			lua_pushboolean(L, false);
+			lua_pushvalue(L, 1);
 			lua_pushfstring(L, "bind port %d failed", port);
 			return 2;
 		}
@@ -1381,12 +1523,12 @@ int SockTcp::mylua_listen(lua_State* L)
 	r = _this->listen(logs);
 	
 	if (SOCKET_ERROR == r) {
-		lua_pushboolean(L, false);
+		lua_pushvalue(L, 1);
 		lua_pushfstring(L, "listen in port %d failed", port);
 		return 2;
 	} else {
-		lua_pushboolean(L, true);
-		lua_pushstring(L, "listen ok");
+		lua_pushvalue(L, 1);
+		lua_pushnil(L);
 		return 2;
 	}
 }
@@ -1395,7 +1537,21 @@ int SockTcp::mylua_listen(lua_State* L)
 //
 int SockTcp::mylua_accept(lua_State* L)
 {
-	return 0;
+	SockTcp* _this = mylua_this(L);
+	
+	sockaddr_in addr = { 0 };
+	
+	int fd = _this->accept(&addr);
+	
+	if (fd >= 0) {
+		SockTcp* obj = new SockTcp();
+		obj->acceptfd(fd);
+		return LuaHelper::bind<SockTcp>(L, SOCKLIB_TCP, obj);
+	}
+	
+	lua_pushnil(L);
+	
+	return 1;
 }
 
 //----------------------------------------------------------------------------
@@ -1540,6 +1696,40 @@ int SockTcp::mylua_setopt(lua_State* L)
 
 //----------------------------------------------------------------------------
 //
+int SockTcp::mylua_peeraddr(lua_State* L)
+{
+	SockTcp* _this = mylua_this(L);
+
+	std::string ip;
+	u16_t port;
+	
+	_this->getPeerAddr(ip, &port);
+	
+	lua_pushstring(L, ip.c_str());
+	lua_pushnumber(L, port);
+	
+	return 2;
+}
+
+//----------------------------------------------------------------------------
+//
+int SockTcp::mylua_sockaddr(lua_State* L)
+{
+	SockTcp* _this = mylua_this(L);
+
+	std::string ip;
+	u16_t port;
+	
+	_this->getSockAddr(ip, &port);
+	
+	lua_pushstring(L, ip.c_str());
+	lua_pushnumber(L, port);
+	
+	return 2;
+}
+
+//----------------------------------------------------------------------------
+//
 #define SAFE_LUA_UNREF(n) \
 	if (n >= 0) { \
 		luaL_unref(L, LUA_REGISTRYINDEX, n); \
@@ -1679,24 +1869,74 @@ int SockUdp::create()
 
 //----------------------------------------------------------------------------
 //
-int SockUdp::sendTo(const std::string& host, u16_t port, const char* data, u32_t len)
+int SockUdp::sendto(const std::string& host, u16_t port, const void* data, u32_t len)
 {
 	DBGLOG("%s{fd=%d}:sendto(%s:%d, %dbytes) free\n", SOCKLIB_UDP.c_str(), fd(), host.c_str(), port, len);
-
-	return 0;
+	
+	u32_t ip = Util::ips2n(host.c_str());
+	
+	return sendto(ip, port, data, len);
 }
 
 //----------------------------------------------------------------------------
 //
-int SockUdp::recvFrom()
+int SockUdp::sendto(u32_t ip, u16_t port, const void* data, u32_t len)
 {
-	std::string host;
-	u16_t port = 0;
-	int len = 0;
+	sockaddr_in addr = { 0 };
+	addr.sin_len		 = sizeof(addr);
+	addr.sin_family      = PF_INET;
+	addr.sin_addr.s_addr = ip;
+	addr.sin_port        = htons(port);
+	
+	return sendto(&addr, data, len);
+}
 
-	DBGLOG("%s{fd=%d}:recvfrom(%s:%d, %dbytes) free\n", SOCKLIB_UDP.c_str(), fd(), host.c_str(), port, len);
+//----------------------------------------------------------------------------
+//
+int SockUdp::sendto(const sockaddr_in* addr, const void* data, u32_t len)
+{
+	return (int)::sendto(fd(), (char*)data, len, 0, (const struct sockaddr*)addr, sizeof(*addr));
+}
 
-	return 0;
+//----------------------------------------------------------------------------
+//
+int SockUdp::recvfrom(void* data, u32_t len, u32_t* ip, u16_t* port)
+{
+	sockaddr_in addr;
+	int r = recvfrom(data, len, &addr);
+	if (r > 0) {
+		if (ip) *ip	= addr.sin_addr.s_addr;
+		if (port) *port	= ntohs(addr.sin_port);
+	} else {
+		if (ip) *ip = 0;
+		if (port) *port = 0;
+	}
+	return r;
+}
+
+int SockUdp::recvfrom(void* data, u32_t len, std::string& ip, u16_t* port)
+{
+	sockaddr_in addr;
+	int r = recvfrom(data, len, &addr);
+	if (r > 0) {
+		ip = Util::ipn2s(addr.sin_addr.s_addr);
+		if (port) *port	= ntohs(addr.sin_port);
+	} else {
+		ip = "";
+		if (port) *port = 0;
+	}
+	return r;
+}
+
+int SockUdp::recvfrom(void* data, u32_t len, sockaddr_in* addr)
+{
+	socklen_t addrlen = sizeof(sockaddr_in);
+	if (addr) {
+		return (int)::recvfrom(fd(), data, len, 0, (struct sockaddr*)addr, &addrlen);
+	} else {
+		sockaddr_in tmp = { 0 };
+		return (int)::recvfrom(fd(), data, len, 0, (struct sockaddr*)&tmp, &addrlen);
+	}
 }
 
 //----------------------------------------------------------------------------
@@ -1709,9 +1949,8 @@ void SockUdp::onRecv()
 	if (_mylua_onRecv >= 0) {
 		lua_State* L = SockLib::luaState();
 		lua_rawgeti(L, LUA_REGISTRYINDEX, _mylua_onRecv);
-		lua_newtable(L);
 
-		int result = lua_pcall(L, 1, 0, 0);
+		int result = lua_pcall(L, 0, 0, 0);
 		if (0 != result) {
 			luaL_error(L, "%s:onRecv event call error: %d", SOCKLIB_UDP.c_str(), result);
 		}
@@ -1727,9 +1966,8 @@ void SockUdp::onSend()
 	if (_mylua_onSend >= 0) {
 		lua_State* L = SockLib::luaState();
 		lua_rawgeti(L, LUA_REGISTRYINDEX, _mylua_onSend);
-		lua_newtable(L);
 
-		int result = lua_pcall(L, 1, 0, 0);
+		int result = lua_pcall(L, 0, 0, 0);
 		if (0 != result) {
 			luaL_error(L, "%s:onSend event call error: %d", SOCKLIB_UDP.c_str(), result);
 		}
@@ -1747,9 +1985,8 @@ void SockUdp::onClose()
 	if (_mylua_onClose >= 0) {
 		lua_State* L = SockLib::luaState();
 		lua_rawgeti(L, LUA_REGISTRYINDEX, _mylua_onClose);
-		lua_newtable(L);
 
-		int result = lua_pcall(L, 1, 0, 0);
+		int result = lua_pcall(L, 0, 0, 0);
 		if (0 != result) {
 			luaL_error(L, "%s:onClose event call error: %d", SOCKLIB_UDP.c_str(), result);
 		}
@@ -1788,10 +2025,27 @@ int SockUdp::mylua_sendto(lua_State* L)
 {
 	SockUdp* _this = mylua_this(L);
 	
-	const char* host = luaL_checkstring(L, 2);
-	lua_Integer port = luaL_checkinteger(L, 3);
+	const char* host = 0;
+	u32_t ip = 0;
 	
-	int n = _this->sendTo(host, port, 0, 0);
+	if (lua_isnumber(L, 2))
+		ip = (u32_t)lua_tonumber(L, 2);
+	else
+		host = luaL_checkstring(L, 2);
+	
+	u16_t port = (u16_t)luaL_checkinteger(L, 3);
+	
+	void* ptr = 0;
+	u32_t len = 0;
+	
+	int n = 0;
+	
+	if (mylua_input_get(L, 4, ptr, len)) {
+		if (ip > 0)
+			n = _this->sendto((u32_t)ip, port, ptr, len);
+		else if (host && host[0])
+			n = _this->sendto(std::string(host), port, ptr, len);
+	}
 	
 	lua_pushinteger(L, n);
 
@@ -1803,11 +2057,30 @@ int SockUdp::mylua_sendto(lua_State* L)
 int SockUdp::mylua_recvfrom(lua_State* L)
 {
 	SockUdp* _this = mylua_this(L);
-	_this->recvFrom();
 	
-	lua_pushinteger(L, 0);
+	std::string ip;
+	u16_t port;
 	
-	return 1;
+	char buf[1024 * 8];
+	buf[0] = 0;
+	
+	int len = _this->recvfrom(buf, sizeof(buf), ip, &port);
+	if (len > 0)
+		buf[len] = 0;
+	
+	const char* fmt = 0;
+	if (lua_gettop(L) >= 2)
+		fmt = luaL_checkstring(L, 2);
+
+	int n = mylua_return_fmt(L, fmt, buf, len > 0 ? len : 0);
+	
+	if (n == 1) {
+		lua_pushnumber(L, len);
+	}
+	lua_pushstring(L, ip.c_str());
+	lua_pushnumber(L, port);
+	
+	return n + 2;
 }
 
 //----------------------------------------------------------------------------
@@ -3524,6 +3797,10 @@ void Timer::onTick(u64_t tick)
 ///////////////////////////////////////////////////////////////////////////////
 // Util
 //
+
+Util::IPCache Util::_ipcache;
+std::mutex Util::_ipmutex;
+
 #ifdef _WIN32
 int gettimeofday(struct timeval *tp, void *tzp)
 {
@@ -3554,9 +3831,7 @@ u64_t Util::tick()
 
 
 //----------------------------------------------------------------------------
-// todo:
-//		gethostbyname() is blocking
-// 		add a DNS quering thread
+//	gethostbyname() is blocking
 //
 u32_t Util::ips2n(const std::string& addr)
 {
@@ -3582,6 +3857,94 @@ std::string Util::ipn2s(u32_t ip)
 	return ret;
 }
 
+u32_t Util::ipprobe(const std::string& addr)
+{
+	u32_t ip = inet_addr(addr.c_str());
+	
+	if (ip == INADDR_NONE) {
+		AutoMutex locker(_ipmutex);
+		if (_ipcache.find(addr) != _ipcache.end()) {
+			ip = _ipcache[addr];
+		} else {
+			_ipcache[addr] = 0;
+			
+			auto t = std::thread([addr] {
+				u32_t ip = 0;
+				hostent* host = ::gethostbyname(addr.c_str());
+				if (host && host->h_length)  {
+					sockaddr_in addr = { 0 };
+					memcpy(&addr.sin_addr, host->h_addr_list[0], host->h_length);
+					ip = addr.sin_addr.s_addr;
+				}
+				if (ip != INADDR_NONE && ip > 0)
+				{
+					AutoMutex locker(_ipmutex);
+					_ipcache[addr] = ip;
+				} else {
+					AutoMutex locker(_ipmutex);
+					_ipcache.erase(addr);
+				}
+			});
+			t.detach();
+		}
+	}
+
+	if (ip == INADDR_NONE)
+		ip = 0;
+
+	return ip;
+}
+
+void Util::addr2ips(const sockaddr_in* addr, std::string& ip, u16_t* port)
+{
+	if (!addr) return;
+	ip = ipn2s(addr->sin_addr.s_addr);
+	if (port) *port = ntohs(addr->sin_port);
+}
+
+void Util::addr2ipn(const sockaddr_in* addr, u32_t* ip, u16_t* port)
+{
+	if (!addr) return;
+	if (ip) *ip = addr->sin_addr.s_addr;
+	if (port) *port = ntohs(addr->sin_port);
+}
+
+void Util::ips2addr(const std::string& ip, u16_t port, sockaddr_in* addr)
+{
+	if (!addr) return;
+	addr->sin_len			= sizeof(*addr);
+	addr->sin_family      	= AF_INET;
+	addr->sin_addr.s_addr 	= ips2n(ip);
+	addr->sin_port 			= htons(port);
+}
+
+void Util::ipn2addr(u32_t ip, u16_t port, sockaddr_in* addr)
+{
+	if (!addr) return;
+	addr->sin_len			= sizeof(*addr);
+	addr->sin_family      	= AF_INET;
+	addr->sin_addr.s_addr 	= ip;
+	addr->sin_port 			= htons(port);
+}
+
+static bool ishexnum(int v)
+{
+	return ((v >= '0' && v <= '9') ||
+			(v >= 'a' && v <= 'z') ||
+			(v >= 'A' && v <= 'Z'));
+}
+
+static char hex2char(char v) {
+	if (v >= '0' && v <= '9')
+		return v - '0';
+	else if (v >= 'a' && v <= 'z')
+		return v - 'a' + 10;
+	else if (v >= 'A' && v <= 'Z')
+		return v - 'A' + 10;
+	else
+		return 0;
+}
+
 std::string Util::urlenc(const std::string& url)
 {
 	static char HEX_CHARS[] = "0123456789ABCDEF";
@@ -3597,17 +3960,9 @@ std::string Util::urlenc(const std::string& url)
 	{
 		int v = (int)(str[i]);
 		
-	#if 1
-		if ((v >= '0' && v <= '9') ||
-			(v >= 'a' && v <= 'z') ||
-			(v >= 'A' && v <= 'Z') )
-	#else
-		if (isalnum(v))	// ctype assert
-	#endif
-		{
+		if (ishexnum(v) || strchr("-_.!~*'()", v)) {
 			*psz++ = (char)v;
-		}
-		else {
+		} else {
 			*psz++ = '%';
 			*psz++ = HEX_CHARS[(v >> 4) & 15];
 			*psz++ = HEX_CHARS[v & 15];
@@ -3625,7 +3980,33 @@ std::string Util::urlenc(const std::string& url)
 
 std::string Util::urldec(const std::string& url)
 {
-	return "";
+	const char* str = url.c_str();
+	u32_t len = (u32_t)strlen(str);
+	if (!len) return "";
+	
+	char* buf = new char[len * 2];
+	char* psz = buf;
+
+	for (u32_t i = 0; i < len; ++i)
+	{
+		if (str[i] != '%') {
+			*psz++ = str[i];
+		} else if ((i + 2) < len &&
+			ishexnum(str[i + 1]) && ishexnum(str[i + 2])) {
+			*psz++ = hex2char(str[i + 1]) * 16 + hex2char(str[i + 2]);
+			i += 2;
+		} else {
+			break;
+		}
+	}
+
+	*psz = 0;
+	
+	std::string ret(buf);
+	
+	delete[] buf;
+	
+	return ret;
 }
 
 void Util::poll()
@@ -3796,6 +4177,13 @@ int Util::mylua_ipn2s(lua_State* L)
 	u32_t ipn = (u32_t)luaL_checknumber(L, 1);
 	std::string ret = Util::ipn2s(ipn);
 	lua_pushstring(L, ret.c_str());
+	return 1;
+}
+
+int Util::mylua_ipprobe(lua_State* L)
+{
+	const char* addr = luaL_checkstring(L, 1);
+	lua_pushnumber(L, Util::ipprobe(addr));
 	return 1;
 }
 
