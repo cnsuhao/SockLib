@@ -15,6 +15,7 @@ extern "C" {
 
 using namespace std;
 
+
 int main(int argc, const char * argv[])
 {
 	lua_State* L = luaL_newstate();
@@ -27,13 +28,23 @@ int main(int argc, const char * argv[])
 //	socklib::SockTcp* tcp = socklib::SockLib::createTcp();
 //	socklib::SockLib::destroy(tcp);
 #endif
+
+	// you need to edit this path
+#ifdef _WIN32
+	#define SCRIPT_DIR "Z:/OSX/Users/LX/CC/MyLua/SockLib/"
+#else
+	#define SCRIPT_DIR "/Users/LX/CC/MyLua/SockLib/"
+#endif
+	
 	
 #if 1 && SOCKLIB_TO_LUA
-	socklib::SockLib::luaAddPath("/Users/LX/CC/MyLua/MyLua51Test/scripts/?.lua");
+	socklib::SockLib::luaAddPath(SCRIPT_DIR "?.lua");
+	socklib::SockLib::luaAddPath(SCRIPT_DIR "Mahjong/?.lua");
 	
-//	socklib::SockLib::luaLoadFile("socklib_test.lua", false);
-	socklib::SockLib::luaLoadFile("/Users/LX/CC/MyLua/MyLua51Test/scripts/App.lua", false);
-//	socklib::SockLib::luaLoadFile("/Users/LX/CC/MyLua/MyLua51Test/scripts/Net/Handler.lua", false);
+	socklib::SockLib::luaLoadFile(SCRIPT_DIR "socklib_test.lua", false);
+//	socklib::SockLib::luaLoadFile(SCRIPT_DIR "example_tcp.lua", false);
+//	socklib::SockLib::luaLoadFile(SCRIPT_DIR "Mahjong/App.lua", false);
+//	socklib::SockLib::luaLoadFile(SCRIPT_DIR "Mahjong/Net/Handler.lua", false);
 
 	while (1) {
 		socklib::SockLib::poll();

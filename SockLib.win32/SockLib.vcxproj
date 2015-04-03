@@ -1,0 +1,144 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{342D34C2-7812-484A-888F-828621CF8463}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>SockLib</RootNamespace>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v120</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v120</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+    <IncludePath>$(ProjectDir)../lua51;$(IncludePath)</IncludePath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;_LIB;%(PreprocessorDefinitions);_CRT_SECURE_NO_WARNINGS</PreprocessorDefinitions>
+      <SDLCheck>true</SDLCheck>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;_LIB;%(PreprocessorDefinitions);_CRT_SECURE_NO_WARNINGS</PreprocessorDefinitions>
+      <SDLCheck>true</SDLCheck>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="..\lua51\lapi.c" />
+    <ClCompile Include="..\lua51\lauxlib.c" />
+    <ClCompile Include="..\lua51\lbaselib.c" />
+    <ClCompile Include="..\lua51\lcode.c" />
+    <ClCompile Include="..\lua51\ldblib.c" />
+    <ClCompile Include="..\lua51\ldebug.c" />
+    <ClCompile Include="..\lua51\ldo.c" />
+    <ClCompile Include="..\lua51\ldump.c" />
+    <ClCompile Include="..\lua51\lfunc.c" />
+    <ClCompile Include="..\lua51\lgc.c" />
+    <ClCompile Include="..\lua51\linit.c" />
+    <ClCompile Include="..\lua51\liolib.c" />
+    <ClCompile Include="..\lua51\llex.c" />
+    <ClCompile Include="..\lua51\lmathlib.c" />
+    <ClCompile Include="..\lua51\lmem.c" />
+    <ClCompile Include="..\lua51\loadlib.c" />
+    <ClCompile Include="..\lua51\lobject.c" />
+    <ClCompile Include="..\lua51\lopcodes.c" />
+    <ClCompile Include="..\lua51\loslib.c" />
+    <ClCompile Include="..\lua51\lparser.c" />
+    <ClCompile Include="..\lua51\lstate.c" />
+    <ClCompile Include="..\lua51\lstring.c" />
+    <ClCompile Include="..\lua51\lstrlib.c" />
+    <ClCompile Include="..\lua51\ltable.c" />
+    <ClCompile Include="..\lua51\ltablib.c" />
+    <ClCompile Include="..\lua51\ltm.c" />
+    <ClCompile Include="..\lua51\lundump.c" />
+    <ClCompile Include="..\lua51\lvm.c" />
+    <ClCompile Include="..\lua51\lzio.c" />
+    <ClCompile Include="..\lua51\print.c" />
+    <ClCompile Include="..\SockLib.cpp" />
+    <ClCompile Include="..\socklib_test.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\lua51\lapi.h" />
+    <ClInclude Include="..\lua51\lauxlib.h" />
+    <ClInclude Include="..\lua51\lcode.h" />
+    <ClInclude Include="..\lua51\ldebug.h" />
+    <ClInclude Include="..\lua51\ldo.h" />
+    <ClInclude Include="..\lua51\lfunc.h" />
+    <ClInclude Include="..\lua51\lgc.h" />
+    <ClInclude Include="..\lua51\llex.h" />
+    <ClInclude Include="..\lua51\llimits.h" />
+    <ClInclude Include="..\lua51\lmem.h" />
+    <ClInclude Include="..\lua51\lobject.h" />
+    <ClInclude Include="..\lua51\lopcodes.h" />
+    <ClInclude Include="..\lua51\lparser.h" />
+    <ClInclude Include="..\lua51\lstate.h" />
+    <ClInclude Include="..\lua51\lstring.h" />
+    <ClInclude Include="..\lua51\ltable.h" />
+    <ClInclude Include="..\lua51\ltm.h" />
+    <ClInclude Include="..\lua51\lua.h" />
+    <ClInclude Include="..\lua51\luaconf.h" />
+    <ClInclude Include="..\lua51\lualib.h" />
+    <ClInclude Include="..\lua51\lundump.h" />
+    <ClInclude Include="..\lua51\lvm.h" />
+    <ClInclude Include="..\lua51\lzio.h" />
+    <ClInclude Include="..\SockLib.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

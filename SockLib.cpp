@@ -12,8 +12,8 @@
 
 #ifdef _WIN32
 	#include <time.h>
-	#define StrCmpI					::stricmp
-	#define StrCmpNI				::strnicmp
+	#define StrCmpI					::_stricmp
+	#define StrCmpNI				::_strnicmp
 	#pragma comment(lib, "ws2_32.lib")
 #else // !_WIN32
 	#include <sys/time.h>
@@ -192,7 +192,11 @@ void SockLib::poll(u32_t usec)
 	beforePoll();
 	
 	if (_refs.empty()) {
+#ifdef _WIN32
+		Sleep(1);
+#else
 		usleep(usec ? usec*100 : 1000);
+#endif
 		return;
 	}
 	
@@ -1013,7 +1017,9 @@ int SockTcp::connect(const std::string& host, u16_t port)
 int SockTcp::connect(u32_t ip, u16_t port)
 {
 	sockaddr_in addr = { 0 };
+#ifndef _WIN32
 	addr.sin_len		 = sizeof(addr);
+#endif
 	addr.sin_family      = PF_INET;
 	addr.sin_addr.s_addr = ip;
 	addr.sin_port        = htons(port);
@@ -1077,7 +1083,9 @@ int SockTcp::bind(const std::string& ip, u16_t port)
 int SockTcp::bind(u32_t ip, u16_t port)
 {
 	sockaddr_in addr = { 0 };
-	addr.sin_len		 = sizeof(addr);
+#ifndef _WIN32
+	addr.sin_len = sizeof(addr);
+#endif
 	addr.sin_family      = AF_INET;
 	addr.sin_addr.s_addr = ip;
 	addr.sin_port        = htons(port);
@@ -1117,8 +1125,10 @@ int SockTcp::listen(int n)
 int SockTcp::accept(sockaddr_in* addr)
 {
 	DBGLOG("%s{fd=%d}:close()\n", SOCKLIB_TCP.c_str(), fd());
-	
+
+#ifndef _WIN32
 	addr->sin_len = sizeof(*addr);
+#endif
 	socklen_t len = sizeof(*addr);
 	
 	return ::accept(fd(), (struct sockaddr*)addr, &len);
@@ -1853,8 +1863,10 @@ int SockUdp::sendto(const std::string& host, u16_t port, const void* data, u32_t
 int SockUdp::sendto(u32_t ip, u16_t port, const void* data, u32_t len)
 {
 	sockaddr_in addr = { 0 };
-	addr.sin_len		 = sizeof(addr);
-	addr.sin_family      = PF_INET;
+#ifndef _WIN32
+	addr.sin_len	= sizeof(addr);
+#endif
+	addr.sin_family = PF_INET;
 	addr.sin_addr.s_addr = ip;
 	addr.sin_port        = htons(port);
 	
@@ -1902,10 +1914,10 @@ int SockUdp::recvfrom(void* data, u32_t len, sockaddr_in* addr)
 {
 	socklen_t addrlen = sizeof(sockaddr_in);
 	if (addr) {
-		return (int)::recvfrom(fd(), data, len, 0, (struct sockaddr*)addr, &addrlen);
+		return (int)::recvfrom(fd(), (char*)data, len, 0, (struct sockaddr*)addr, &addrlen);
 	} else {
 		sockaddr_in tmp = { 0 };
-		return (int)::recvfrom(fd(), data, len, 0, (struct sockaddr*)&tmp, &addrlen);
+		return (int)::recvfrom(fd(), (char*)data, len, 0, (struct sockaddr*)&tmp, &addrlen);
 	}
 }
 
@@ -3664,7 +3676,7 @@ std::string Base64_encode(const void* buf, u32_t len)
 	return str;
 }
 
-/// 解码（可能返回二进制）
+/// 解码(可能返回二进制)
 std::string Base64_decode(const char* sz, u32_t len)
 {
 	if (!len)
@@ -3882,7 +3894,9 @@ void Util::addr2ipn(const sockaddr_in* addr, u32_t* ip, u16_t* port)
 void Util::ips2addr(const std::string& ip, u16_t port, sockaddr_in* addr)
 {
 	if (!addr) return;
-	addr->sin_len			= sizeof(*addr);
+#ifndef _WIN32
+	addr->sin_len			= sizeof(sockaddr_in);
+#endif
 	addr->sin_family      	= AF_INET;
 	addr->sin_addr.s_addr 	= ips2n(ip);
 	addr->sin_port 			= htons(port);
@@ -3891,8 +3905,10 @@ void Util::ips2addr(const std::string& ip, u16_t port, sockaddr_in* addr)
 void Util::ipn2addr(u32_t ip, u16_t port, sockaddr_in* addr)
 {
 	if (!addr) return;
-	addr->sin_len			= sizeof(*addr);
-	addr->sin_family      	= AF_INET;
+#ifndef _WIN32
+	addr->sin_len = sizeof(sockaddr_in);
+#endif
+	addr->sin_family = AF_INET;
 	addr->sin_addr.s_addr 	= ip;
 	addr->sin_port 			= htons(port);
 }

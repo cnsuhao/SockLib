@@ -60,6 +60,9 @@
 #include <string.h>
 #include <errno.h>
 #include <iostream>
+#include <functional>
+#include <mutex>
+#include <thread>
 
 #ifdef __APPLE__
 	#include <sys/malloc.h>

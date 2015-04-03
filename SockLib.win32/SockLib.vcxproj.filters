@@ -1,0 +1,183 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="src">
+      <UniqueIdentifier>{3def915b-f63d-4670-b4df-78608f7ba398}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="lua51">
+      <UniqueIdentifier>{6a42a7e6-f48b-436c-99f3-dbade08e944e}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\lua51\lapi.c">
+      <Filter>lua51</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lua51\lauxlib.c">
+      <Filter>lua51</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lua51\lbaselib.c">
+      <Filter>lua51</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lua51\lcode.c">
+      <Filter>lua51</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lua51\ldblib.c">
+      <Filter>lua51</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lua51\ldebug.c">
+      <Filter>lua51</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lua51\ldo.c">
+      <Filter>lua51</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lua51\ldump.c">
+      <Filter>lua51</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lua51\lfunc.c">
+      <Filter>lua51</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lua51\lgc.c">
+      <Filter>lua51</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lua51\linit.c">
+      <Filter>lua51</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lua51\liolib.c">
+      <Filter>lua51</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lua51\llex.c">
+      <Filter>lua51</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lua51\lmathlib.c">
+      <Filter>lua51</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lua51\lmem.c">
+      <Filter>lua51</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lua51\loadlib.c">
+      <Filter>lua51</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lua51\lobject.c">
+      <Filter>lua51</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lua51\lopcodes.c">
+      <Filter>lua51</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lua51\loslib.c">
+      <Filter>lua51</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lua51\lparser.c">
+      <Filter>lua51</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lua51\lstate.c">
+      <Filter>lua51</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lua51\lstring.c">
+      <Filter>lua51</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lua51\lstrlib.c">
+      <Filter>lua51</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lua51\ltable.c">
+      <Filter>lua51</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lua51\ltablib.c">
+      <Filter>lua51</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lua51\ltm.c">
+      <Filter>lua51</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lua51\lundump.c">
+      <Filter>lua51</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lua51\lvm.c">
+      <Filter>lua51</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lua51\lzio.c">
+      <Filter>lua51</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lua51\print.c">
+      <Filter>lua51</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SockLib.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\socklib_test.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\lua51\lapi.h">
+      <Filter>lua51</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lua51\lauxlib.h">
+      <Filter>lua51</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lua51\lcode.h">
+      <Filter>lua51</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lua51\ldebug.h">
+      <Filter>lua51</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lua51\ldo.h">
+      <Filter>lua51</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lua51\lfunc.h">
+      <Filter>lua51</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lua51\lgc.h">
+      <Filter>lua51</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lua51\llex.h">
+      <Filter>lua51</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lua51\llimits.h">
+      <Filter>lua51</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lua51\lmem.h">
+      <Filter>lua51</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lua51\lobject.h">
+      <Filter>lua51</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lua51\lopcodes.h">
+      <Filter>lua51</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lua51\lparser.h">
+      <Filter>lua51</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lua51\lstate.h">
+      <Filter>lua51</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lua51\lstring.h">
+      <Filter>lua51</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lua51\ltable.h">
+      <Filter>lua51</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lua51\ltm.h">
+      <Filter>lua51</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lua51\lua.h">
+      <Filter>lua51</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lua51\luaconf.h">
+      <Filter>lua51</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lua51\lualib.h">
+      <Filter>lua51</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lua51\lundump.h">
+      <Filter>lua51</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lua51\lvm.h">
+      <Filter>lua51</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lua51\lzio.h">
+      <Filter>lua51</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SockLib.h">
+      <Filter>src</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>
