@@ -1,9 +1,6 @@
+local util = socklib.util
 
 local function test_util_md5()
-	print("---------------------test_util_md5() {")
-
-	local util = socklib.util
-
 	-- 1 a md5 function
 	print( util.md5("hello") )
 
@@ -18,19 +15,12 @@ local function test_util_md5()
 	print( util.md5(buf) )
 	print( util.md5():init():update(buf):final() )
 
-	-- 5 final(out_format: nil/hex=default, bin=lightuserdata, buf=socklib.buf)
-	local bbb = util.md5():init():update("hello"):final("buf")
+	-- 5 out format: socklib.FMT.*
+	local bbb = util.md5():init():update("hello"):final(socklib.FMT.BUF)
 	print( bbb )
-
-	print("---------------------test_util_md5() }")
 end
 
-
 local function test_util_sha1()
-	print("---------------------test_util_sha1() {")
-
-	local util = socklib.util
-
 	-- 1 a sha1 function
 	print( util.sha1("hello") )
 
@@ -45,18 +35,12 @@ local function test_util_sha1()
 	print( util.sha1(buf) )
 	print( util.sha1():init():update(buf):final() )
 
-	-- 5 final(out_format: nil/hex=default, bin=lightuserdata, buf=socklib.buf)
+	-- 5 out format: socklib.FMT.*
 	local bbb = util.sha1():init():update("hello"):final("buf")
 	print( bbb )
-
-	print("---------------------test_util_sha1() }")
 end
 
 local function test_util_rc4()
-	print("---------------------test_util_rc4() {")
-
-	local util = socklib.util
-
 	-- 1 a rc4 function
 	print( util.rc4("key_aa", "data_bb") )
 
@@ -70,15 +54,9 @@ local function test_util_rc4()
 	-- 4 use obj: rc4(rc4_data) = originally data
 	local buf = util.rc4():setKey("key_aa"):process("data_bb")
 	print (util.rc4():setKey("key_aa"):process(buf):ps() )
-
-	print("---------------------test_util_rc4() }")
 end
 
 local function test_util_crc32()
-	print("---------------------test_util_crc32() {")
-
-	local util = socklib.util
-
 	-- util.crc32(a string or a lightudata or a socklib.buf, optinal len, optinal salk)
 
 	print( util.crc32("haha") )
@@ -88,29 +66,17 @@ local function test_util_crc32()
 
 	-- socklib.buf is a byte stream
 	print( util.crc32( socklib.buf():w("haha") ) )
-
-	print("---------------------test_util_crc32() }")
 end
 
 local function test_util_base64()
-	print("---------------------test_util_base64() {")
-
-	local util = socklib.util
-
 	local e = util.b64enc("haha")
 	local d = util.b64dec(e)
 
 	print(e)
 	print(d)
-
-	print("---------------------test_util_base64() }")
 end
 
 local function test_util_u32op()
-	print("---------------------test_util_u32op() {")
-
-	local util = socklib.util
-
 	-- 2 args = socklib.util.u32op("opt_str", num)
 	print( util.u32op("!", 123) )
 	print( util.u32op("~", 123) )
@@ -119,22 +85,73 @@ local function test_util_u32op()
 	print( util.u32op(123, "<<", 2) )
 	print( util.u32op(123, "&", 2) )
 	print( util.u32op(123, "|= ~", 2) )
+end
 
-	print("---------------------test_util_u32op() }")
+-- tmrId = socklib.util.setTimer(delay_msec, function(id, curloops, maxloops) end, max_loops = -1)
+-- socklib.util.delTimer(tmrId)
+function test_util_timer()
+	local delay_msec = 1000
+	local max_loops = 5
+
+	socklib.util.setTimer(delay_msec, function(tmrId, curLoops)
+		print("timer5loops1 id = " .. tostring(tmrId) .. ", curLoops = " .. tostring(curLoops))
+	end, max_loops)
+
+	socklib.util.setTimer(1000, function(id, c, m)
+		print("timer5loops2 id = " .. tostring(id) .. ", curLoops = " .. tostring(c) .. ", maxLoops = " .. tostring(m))
+		return curLoops < 5 -- return false to stop
+	end)
+
+	socklib.util.setTimer(delay_msec, function()
+		print("timer10loops1")
+	end, 10)
+
+	local tmrId = socklib.util.setTimer(1000, function(tmrId, curLoops, maxLoops)
+		print("timer_todel id = " .. tostring(tmrId) .. ", curLoops = " .. tostring(curLoops) .. ", maxLoops = " .. tostring(maxLoops))
+	end, -1)
+
+	socklib.util.delTimer(tmrId)
+end
+
+-- util.ips2n() is blocking
+-- util.ipprobe() is not blocking
+local function test_util_ipprobe()
+	local host = "www.lua.org"
+	local ip = util.ipprobe(host)
+	
+	local function onGot(b)
+		if b then
+			print(host .. " = " .. util.ipn2s(ip))
+			-- continue to do something
+		else
+			print("can't get ip for " .. host)
+		end	
+	end
+	
+	if ip > 0 then
+		onGot(true)
+	else -- create a timer to try
+		util.setTimer(1000, function(tmrId, curLoops)
+			print("querying " .. host .. "...")
+			ip = util.ipprobe(host)
+			if ip > 0 then
+				onGot(true)
+				return false -- to stop timer
+			elseif curLoops >= 10 then
+				print("too many times to try")
+				onGot(false)
+				return false -- to stop timer
+			end
+		end)
+	end
 end
 
 local function test_util_other()
-	print("---------------------test_util_other() {")
-
-	local util = socklib.util
-
 	print( util.tick() )
 	print( util.urlenc("http://aa.bb.cc/dd ee.asp") )
 	print( util.urldec(util.urlenc("http://aa.bb.cc/dd ee.asp")) )
 	print( util.ips2n("192.168.0.1") )
 	print( util.ipn2s(util.ips2n("192.168.0.1")) )
-
-	print("---------------------test_util_other() }")
 end
 
 -- socklib.buf is a byte stream
@@ -142,13 +159,24 @@ end
 -- read:   r() rl() rs() rsl() r8() r16() ....
 -- peek:   p() pl() ps() psl() p8() p16() ....
 -- skip/discard:   skip() == discard()
--- ...
+-- property: buf len md5 sha1 hex b64/base64 crc/crc32
 local function test_buf()
-	print("---------------------test_buf() {")
-
 	local tmp = socklib.buf():ws("tmp")
 	local buf = socklib.buf();
 	print( buf:w("buf"):w(tmp):w("ene", 2):ws("haha"):wsl("haha"):wsl("haha", 4):w8(1):w16(2):w32(3):w64(4) )
+	print( buf.buf ) 
+	print( buf.len ) 
+	print( buf.md5 ) 
+	print( buf.sha1 ) 
+	print( buf.crc ) 
+	print( buf.b64 ) 
+	print( buf.hex )
+	print( buf.r(3) )
+	print( buf.r(3, socklib.FMT.STR ) )
+	print( buf.r(3, socklib.FMT.HEX ) )
+	print( buf.r(3, socklib.FMT.B64 ) )
+	print( buf.r(3, socklib.FMT.BIN ) )
+	print( buf.r(3, socklib.FMT.BBUF ) )
 
 	local tcp = socklib.tcp();
 	local sbf = tcp:sendBuf();
@@ -158,8 +186,6 @@ local function test_buf()
 	print( sbf:skip(2):ps() )
 	print( sbf:rs() )
 	print( sbf )
-
-	print("---------------------test_buf() }")
 end
 
 local function test_tcpserver()
@@ -171,8 +197,6 @@ end
 -- ...
 
 local function test_tcpclient()
-	print("---------------------test_http() {")
-
 	sk = socklib.tcp()
 
 	sk:onevent(socklib.EVT.CONNECT, function(event)
@@ -203,8 +227,6 @@ local function test_tcpclient()
 	end)
 
 	sk:connect("www.baidu.com", 80)
-
-	print("---------------------test_http() }")
 end
 
 local function test_udpserver()
@@ -223,8 +245,6 @@ local function print_table(prefix, tbl)
 end
 
 local function test_socklib_info()
-	print("---------------------test_socklib_info() {")
-
 	print("@ " .. socklib._VERSION)
 
 	print_table("socklib", socklib)
@@ -238,16 +258,12 @@ local function test_socklib_info()
 	print_table("socklib.util.md5", getmetatable(socklib.util.md5()))
 	print_table("socklib.util.sha1", getmetatable(socklib.util.sha1()))
 	print_table("socklib.util.rc4", getmetatable(socklib.util.rc4()))
-
-	print("---------------------test_socklib_info() }")
 end
 
 -- method/member name of obj which belongs to socklib is insensitive
 --		obj.XXX  == obj.xxx  == obj.XxX  ...
 --		obj:XX() == obj:xx() == obj:Xx() ...
 local function test_socklib_nocase()
-	print("---------------------test_socklib_nocase() {")
-
 	print( socklib.TCP )
 	print( socklib.uDp() )
 	print( socklib.buf() )
@@ -260,73 +276,16 @@ local function test_socklib_nocase()
 	print( socklib.utiL.sha1():update("ssf"):final() )
 	print( socklib.OPt.reUseaddr )
 	print( socklib.evt.CONNECT )
-
-	print("---------------------test_socklib_nocase() }")
 end
 
---print( socklib.buf():w("123\12\44\AB").sha1 )
---print( socklib.buf():w("sdf") )
-
-local function aaa()
-	local sk = socklib.tcp()
-
-	for k, v in pairs(sk) do
---		if not string.find(tostring(k), "__") then
-			print("sk" .. "." .. tostring(k) .. "=" .. tostring(v))
---		end
-	end
-
---	sk.test = 123
-
-	local b1 = sk.inbuf b1:w("1") print(b1)
-	local b2 = sk.INbuf b2:w("2") print(b2)
-	local b3 = sk.inBUf b2:W("3") print(b3)
-
-	for k, v in pairs(sk) do
---		if not string.find(tostring(k), "__") then
-			print("sk" .. "." .. tostring(k) .. "=" .. tostring(v))
---		end
-	end
-	--b1 = b2 = b3 = nil
-	sk = nil
-end
-
--- tmrId = socklib.util.setTimer(delay_msec, function(id, curloops, maxloops) end, max_loops = -1)
--- socklib.util.delTimer(tmrId)
---
-function test_util_timer()
-	local delay_msec = 1000
-	local max_loops = 5
-
-	socklib.util.setTimer(delay_msec, function(tmrId, curLoops)
-		print("timer5loops1 id = " .. tostring(tmrId) .. ", curLoops = " .. tostring(curLoops))
-	end, max_loops)
-
-	socklib.util.setTimer(1000, function(id, c, m)
-		print("timer5loops2 id = " .. tostring(id) .. ", curLoops = " .. tostring(c) .. ", maxLoops = " .. tostring(m))
-		return curLoops < 5 -- return false to stop
-	end)
-
-	socklib.util.setTimer(delay_msec, function()
-		print("timer10loops1")
-	end, 10)
-
-	local tmrId = socklib.util.setTimer(1000, function(tmrId, curLoops, maxLoops)
-		print("timer_todel id = " .. tostring(tmrId) .. ", curLoops = " .. tostring(curLoops) .. ", maxLoops = " .. tostring(maxLoops))
-	end, -1)
-
-	socklib.util.delTimer(tmrId)
-end
-
---aaa()
 --collectgarbage("collect")
-
---print_table("_G", _G)
 
 test_socklib_info()
 test_socklib_nocase()
 
-test_util_timer()
+--test_util_ipprobe()
+
+--test_util_timer()
 
 --test_util_md5()
 --test_util_sha1()

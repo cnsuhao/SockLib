@@ -838,36 +838,6 @@ int SockLib::mylua_buf(lua_State* L)
 	return LuaHelper::create<SockBuf>(L, SOCKLIB_BUF);
 }
 
-
-#if 0
-//----------------------------------------------------------------------------
-//
-int SockLib::mylua_buf_bind(lua_State* L, SockBuf* bindObj, bool has_gc)
-{
-	lua_newtable(L);
-	
-	luaL_getmetatable(L, SOCKLIB_BUF.c_str());
-	lua_setmetatable(L, -2);
-
-	void* obj = lua_newuserdata(L, sizeof(SockBuf*));
-	*(SockBuf**) obj = bindObj;
-	
-	std::string name = SOCKLIB_BUF;
-	name += (has_gc ? "gc" : "nogc");
-	
-#if LUA_VERSION_NUM == 501
-	luaL_getmetatable(L, name.c_str());
-	lua_setmetatable(L, -2);
-#else
-	luaL_setmetatable(L, name.c_str());
-#endif
-	
-	lua_setfield(L, -2, "__obj");
-	
-	return 1;
-}
-#endif
-
 //----------------------------------------------------------------------------
 //
 int SockLib::mylua_poll(lua_State* L)
@@ -926,7 +896,7 @@ int SockRef::ioctl(unsigned long cmd, unsigned long* arg)
 
 int SockRef::setNonBlock(bool b)
 {
-#ifdef ANDROID
+#if defined(ANDROID) || defined(LINUX)
 	int flags = ::fcntl(m_fd, F_GETFL);
 	::fcntl(fd(), F_SETFL, flags | O_NONBLOCK);
 #else
@@ -3290,7 +3260,7 @@ int MD5::mylua_final(lua_State* L)
 	u8_t hash[16];
 	_this->final(hash);
 	
-	const char* fmt = 0;
+	const char* fmt = SOCKFMT_HEX;
 	if (lua_gettop(L) >= 2)
 		fmt = luaL_checkstring(L, 2);
 	
@@ -3516,7 +3486,7 @@ int SHA1::mylua_final(lua_State* L)
 	u8_t hash[20];
 	_this->final(hash);
 	
-	const char* fmt = 0;
+	const char* fmt = SOCKFMT_HEX;
 	if (lua_gettop(L) >= 2)
 		fmt = luaL_checkstring(L, 2);
 	

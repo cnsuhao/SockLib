@@ -17,7 +17,7 @@
 
 // show debug message?
 #if !defined(SOCKLIB_DEBUG) && (defined(DEBUG) || defined(_DEBUG))
-#define SOCKLIB_DEBUG		0
+#define SOCKLIB_DEBUG		1
 #endif
 
 // enable CRC32 RC4 MD5 SHA1 BASE64... ?
