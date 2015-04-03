@@ -17,7 +17,7 @@
 
 // show debug message?
 #if !defined(SOCKLIB_DEBUG) && (defined(DEBUG) || defined(_DEBUG))
-#define SOCKLIB_DEBUG		1
+#define SOCKLIB_DEBUG		0
 #endif
 
 // enable CRC32 RC4 MD5 SHA1 BASE64... ?
@@ -289,6 +289,7 @@ public:
 		STA_CONNECTTING,
 		STA_CONNECTED,
 		STA_CONNFAILED,
+		STA_BINDED,
 		STA_LISTENED,
 		STA_ACCEPTED,
 	};
@@ -506,6 +507,16 @@ public:
 	virtual void onClose();
 	virtual void onPoll();
 
+	typedef std::function<void(SockTcp*, bool)> ON_CONNECT;
+	typedef std::function<void(SockTcp*)> 		ON_EVENT;
+	
+	ON_CONNECT	_onConnect = nullptr;
+	ON_EVENT	_onAccept = nullptr;
+	ON_EVENT	_onRecv = nullptr;
+	ON_EVENT	_onSend = nullptr;
+	ON_EVENT	_onClose = nullptr;
+	ON_EVENT	_onPoll = nullptr;
+
 protected:
 	SockBuf*	_recvBuf;
 	SockBuf*	_sendBuf;
@@ -560,6 +571,11 @@ protected:
 public:
 	int create();
 	
+	int bind(const std::string& ip, u16_t port);
+	int bind(u32_t ip, u16_t port);
+	int bind(const sockaddr_in* addr);
+	int bind(u16_t port) { return bind("", port); }
+
 	// UDP can connect() first then send(), but we don't use it
 	
 	int sendto(const std::string& host, u16_t port, const void* data, u32_t len);
@@ -578,6 +594,13 @@ public:
 	virtual void onSend();
 	virtual void onClose();
 	virtual void onPoll();
+	
+	typedef std::function<void(SockUdp*)> 	ON_EVENT;
+	
+	ON_EVENT	_onRecv = nullptr;
+	ON_EVENT	_onSend = nullptr;
+	ON_EVENT	_onClose = nullptr;
+	ON_EVENT	_onPoll = nullptr;
 
 private:
 	
@@ -592,6 +615,7 @@ public:
 
 // call @LUA
 public:
+	static int mylua_bind(lua_State* L);
 	static int mylua_sendto(lua_State* L);
 	static int mylua_recvfrom(lua_State* L);
 	static int mylua_close(lua_State* L);

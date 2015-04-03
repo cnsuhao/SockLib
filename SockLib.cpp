@@ -372,7 +372,7 @@ static const luaL_Reg SockTcp_Reg[] = {
 };
 
 static const luaL_Reg SockUdp_Reg[] = {
-//	{ "bind", 		SockUdp::mylua_bind },
+	{ "bind", 		SockUdp::mylua_bind },
 	{ "sendto", 	SockUdp::mylua_sendto },
 	{ "recvfrom", 	SockUdp::mylua_recvfrom },
 	{ "close", 		SockUdp::mylua_close },
@@ -1101,6 +1101,7 @@ int SockTcp::bind(const sockaddr_in* addr)
 
 	return ::bind(fd(), (struct sockaddr*)addr, sizeof(*addr));
 }
+
 //----------------------------------------------------------------------------
 //
 int SockTcp::listen(int n)
@@ -1297,6 +1298,9 @@ int SockTcp::doRecv()
 void SockTcp::onConnect(bool ok)
 {
 	DBGLOG("%s{fd=%d}:onConnect(%d)\n", SOCKLIB_TCP.c_str(), fd(), ok);
+	
+	if (_onConnect)
+		_onConnect(this, ok);
 
 #if SOCKLIB_TO_LUA
 	if (_mylua_onConnect >= 0) {
@@ -1317,6 +1321,9 @@ void SockTcp::onConnect(bool ok)
 void SockTcp::onAccept()
 {
 	DBGLOG("%s{fd=%d}:onAccept()\n", SOCKLIB_TCP.c_str(), fd());
+	
+	if (_onAccept)
+		_onAccept(this);
 
 #if SOCKLIB_TO_LUA
 	if (_mylua_onAccept >= 0) {
@@ -1340,6 +1347,9 @@ void SockTcp::onRecv()
 	
 	if (isClosed() || len <= 0)
 		return;
+	
+	if (_onRecv)
+		_onRecv(this);
 
 //	DBGLOG("%s{fd=%d}:onRecv(%d)\n", SOCKLIB_TCP.c_str(), fd(), len);
 	
@@ -1365,6 +1375,9 @@ void SockTcp::onSend()
 	
 	if (isClosed() || len <= 0)
 		return;
+	
+	if (_onSend)
+		_onSend(this);
 
 	DBGLOG("%s{fd=%d}:onSend(%d)\n", SOCKLIB_TCP.c_str(), fd(), len);
 
@@ -1387,6 +1400,9 @@ void SockTcp::onSend()
 void SockTcp::onClose()
 {
 //	DBGLOG("%s{fd=%d}:onClose()\n", SOCKLIB_TCP.c_str(), fd());
+	
+	if (_onClose)
+		_onClose(this);
 
 #if SOCKLIB_TO_LUA
 	if (_mylua_onClose >= 0) {
@@ -1406,6 +1422,9 @@ void SockTcp::onClose()
 //
 void SockTcp::onPoll()
 {
+	if (_onPoll)
+		_onPoll(this);
+
 #if SOCKLIB_TO_LUA
 	if (_mylua_onPoll >= 0) {
 		lua_State* L = SockLib::luaState();
@@ -1849,6 +1868,48 @@ int SockUdp::create()
 
 //----------------------------------------------------------------------------
 //
+int SockUdp::bind(const std::string& ip, u16_t port)
+{
+	u32_t ipn = INADDR_ANY;
+	if (ip.length() > 0)
+		ipn = Util::ips2n(ip);
+	
+	return bind(ipn, port);
+}
+
+//----------------------------------------------------------------------------
+//
+int SockUdp::bind(u32_t ip, u16_t port)
+{
+	sockaddr_in addr = { 0 };
+#ifndef _WIN32
+	addr.sin_len = sizeof(addr);
+#endif
+	addr.sin_family      = AF_INET;
+	addr.sin_addr.s_addr = ip;
+	addr.sin_port        = htons(port);
+	
+	int r = bind(&addr);
+	
+	if (SOCKET_ERROR != r) {
+		_sockState = SockLib::STA_BINDED;
+		SockLib::add(this, SockLib::EVT_RECV);
+	}
+	
+	return r;
+}
+
+//----------------------------------------------------------------------------
+//
+int SockUdp::bind(const sockaddr_in* addr)
+{
+	setReuseAddr(true);
+
+	return ::bind(fd(), (struct sockaddr*)addr, sizeof(*addr));
+}
+
+//----------------------------------------------------------------------------
+//
 int SockUdp::sendto(const std::string& host, u16_t port, const void* data, u32_t len)
 {
 	DBGLOG("%s{fd=%d}:sendto(%s:%d, %dbytes) free\n", SOCKLIB_UDP.c_str(), fd(), host.c_str(), port, len);
@@ -1927,6 +1988,9 @@ void SockUdp::onRecv()
 {
 	DBGLOG("%s{fd=%d}:onRecv()\n", SOCKLIB_UDP.c_str(), fd());
 	
+	if (_onRecv)
+		_onRecv(this);
+	
 #if SOCKLIB_TO_LUA
 	if (_mylua_onRecv >= 0) {
 		lua_State* L = SockLib::luaState();
@@ -1944,6 +2008,9 @@ void SockUdp::onRecv()
 //
 void SockUdp::onSend()
 {
+	if (_onSend)
+		_onSend(this);
+
 #if SOCKLIB_TO_LUA
 	if (_mylua_onSend >= 0) {
 		lua_State* L = SockLib::luaState();
@@ -1962,6 +2029,9 @@ void SockUdp::onSend()
 void SockUdp::onClose()
 {
 	DBGLOG("%s{fd=%d}:onClose()\n", SOCKLIB_UDP.c_str(), fd());
+	
+	if (_onClose)
+		_onClose(this);
 
 #if SOCKLIB_TO_LUA
 	if (_mylua_onClose >= 0) {
@@ -1980,6 +2050,9 @@ void SockUdp::onClose()
 //
 void SockUdp::onPoll()
 {
+	if (_onPoll)
+		_onPoll(this);
+
 #if SOCKLIB_TO_LUA
 	if (_mylua_onPoll >= 0) {
 		lua_State* L = SockLib::luaState();
@@ -1999,6 +2072,55 @@ void SockUdp::onPoll()
 SockUdp* SockUdp::mylua_this(lua_State* L, int idx)
 {
 	return LuaHelper::get<SockUdp>(L, SOCKLIB_UDP, idx);
+}
+
+//----------------------------------------------------------------------------
+// bind(port)
+// listen(ip, port)
+//
+int SockUdp::mylua_bind(lua_State* L)
+{
+	SockUdp* _this = mylua_this(L);
+	
+	u16_t port;
+	const char* ip = 0;
+	
+	if (lua_gettop(L) == 2) {
+		port = (u16_t)luaL_checkinteger(L, 2);
+	} else if (lua_gettop(L) >= 3) {
+		ip = luaL_checkstring(L, 2);
+		port = (u16_t)luaL_checkinteger(L, 3);
+	} else {
+		luaL_error(L, "%s.bind() bad data", SOCKLIB_UDP.c_str());
+		return 1;
+	}
+	
+	int r = _this->create();
+	if (SOCKET_ERROR == r) {
+		lua_pushvalue(L, 1);
+		lua_pushfstring(L, "create socket failed");
+		return 2;
+	}
+	
+	if (ip && ip[0]) {
+		r = _this->bind(ip, port);
+		if (SOCKET_ERROR == r) {
+			lua_pushvalue(L, 1);
+			lua_pushfstring(L, "bind %s:%d failed", ip, port);
+			return 2;
+		}
+	} else {
+		r = _this->bind(port);
+		if (SOCKET_ERROR == r) {
+			lua_pushvalue(L, 1);
+			lua_pushfstring(L, "bind port %d failed", port);
+			return 2;
+		}
+	}
+
+	lua_pushvalue(L, 1);
+	lua_pushnil(L);
+	return 2;
 }
 
 //----------------------------------------------------------------------------
@@ -2625,24 +2747,34 @@ int SockBuf::mylua_sub(lua_State* L)
 {
 	SockBuf* _this = mylua_this(L);
 	
-//	int len = (int)_this->len();
-//	
-//	int pos1, pos2, from = 1, end = -1;
-//	
-//	if (lua_gettop(L) > 0)
-//		from = luaL_checkint(L, 1);
-//	if (lua_gettop(L) > 1)
-//		end = luaL_checkint(L, 2);
-//	
-//	if (!from || !end) {
-//		luaL_error(L, "%s.buf:sub() bad params");
-//		return 0;
-//	}
-//	
-//	pos1 = from > 0 ? from : len + from;
-//	pos2 = end > 0 ? end : len + end;
+	int _le = (int)_this->len();
+
+	int from = 1, end = -1;
+
+	if (lua_gettop(L) >= 2)
+		from = luaL_checkint(L, 2);
+	if (lua_gettop(L) >= 3)
+		end = luaL_checkint(L, 3);
 	
-	return 0;
+	if (from == 0) from = 1;
+	if (end == 0) end = -1;
+	if (from < 0) from = _le + from + 1;
+	if (end < 0) end = _le + end + 1;
+	if (end > _le) end = _le;
+	
+	const char* fmt = SOCKFMT_BUF;
+	if (lua_gettop(L) >= 4)
+		fmt = lua_tostring(L, 4);
+	
+	if (from <= _le && from > 0 && end > 0 && from <= end) {
+		void* ptr = _this->pos() + from - 1;
+		u32_t len = end - from + 1;
+		
+		return mylua_return_fmt(L, fmt, ptr, len);
+	} else {
+		lua_pushnil(L);
+		return 1;
+	}
 }
 
 //----------------------------------------------------------------------------
@@ -3613,7 +3745,7 @@ static int b64_encode(const u8_t* szSrc, int lenSrc, char* szDst)
 		i++; szDst++;
 	}
 	
-	int n = (lenSrc * 8) % 3;
+	int n = (lenSrc * 4) % 3;
 	for (int j = 0; j < n; ++j) {
 		*szDst = '=';
 		i++; szDst++;

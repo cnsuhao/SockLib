@@ -5,18 +5,18 @@ local function test_util_md5()
 	print( util.md5("hello") )
 
 	-- 2 a md5 obj
-	print( util.md5():init():update("hello"):final() )
+	print( util.md5():update("hello"):final() )
 
 	-- 3 more step update data and data
-	print( util.md5():init():update("he"):update("llo"):final() )
+	print( util.md5():update("he"):update("llo"):final() )
 
 	-- 4 socklib.buf is a byte stream
 	local buf = socklib.buf():w("hello")
 	print( util.md5(buf) )
-	print( util.md5():init():update(buf):final() )
+	print( util.md5():update(buf):final() )
 
 	-- 5 out format: socklib.FMT.*
-	local bbb = util.md5():init():update("hello"):final(socklib.FMT.BUF)
+	local bbb = util.md5():update("hello"):final(socklib.FMT.BUF)
 	print( bbb )
 end
 
@@ -25,18 +25,18 @@ local function test_util_sha1()
 	print( util.sha1("hello") )
 
 	-- 2 a sha1 obj
-	print( util.sha1():init():update("hello"):final() )
+	print( util.sha1():update("hello"):final() )
 
 	-- 3 more step update data and data
-	print( util.sha1():init():update("he"):update("llo"):final() )
+	print( util.sha1():update("he"):update("llo"):final() )
 
 	-- 4 socklib.buf is a byte stream
 	local buf = socklib.buf():w("hello")
 	print( util.sha1(buf) )
-	print( util.sha1():init():update(buf):final() )
+	print( util.sha1():update(buf):final() )
 
 	-- 5 out format: socklib.FMT.*
-	local bbb = util.sha1():init():update("hello"):final("buf")
+	local bbb = util.sha1():update("hello"):final(socklib.FMT.HEX)
 	print( bbb )
 end
 
@@ -93,24 +93,24 @@ function test_util_timer()
 	local delay_msec = 1000
 	local max_loops = 5
 
-	socklib.util.setTimer(delay_msec, function(tmrId, curLoops)
+	util.setTimer(delay_msec, function(tmrId, curLoops)
 		print("timer5loops1 id = " .. tostring(tmrId) .. ", curLoops = " .. tostring(curLoops))
 	end, max_loops)
 
-	socklib.util.setTimer(1000, function(id, c, m)
+	util.setTimer(1000, function(id, c, m)
 		print("timer5loops2 id = " .. tostring(id) .. ", curLoops = " .. tostring(c) .. ", maxLoops = " .. tostring(m))
-		return curLoops < 5 -- return false to stop
+		return c < 5 -- return false to stop
 	end)
 
-	socklib.util.setTimer(delay_msec, function()
+	util.setTimer(delay_msec, function()
 		print("timer10loops1")
 	end, 10)
 
-	local tmrId = socklib.util.setTimer(1000, function(tmrId, curLoops, maxLoops)
+	local tmrId = util.setTimer(1000, function(tmrId, curLoops, maxLoops)
 		print("timer_todel id = " .. tostring(tmrId) .. ", curLoops = " .. tostring(curLoops) .. ", maxLoops = " .. tostring(maxLoops))
 	end, -1)
 
-	socklib.util.delTimer(tmrId)
+	util.delTimer(tmrId)
 end
 
 -- util.ips2n() is blocking
@@ -152,6 +152,9 @@ local function test_util_other()
 	print( util.urldec(util.urlenc("http://aa.bb.cc/dd ee.asp")) )
 	print( util.ips2n("192.168.0.1") )
 	print( util.ipn2s(util.ips2n("192.168.0.1")) )
+	print( util.ntohs(util.htons(12)) )
+	print( util.ntohl(util.htonl(12)) )
+	print( util.ntohll(util.htonll(12)) )
 end
 
 -- socklib.buf is a byte stream
@@ -171,15 +174,24 @@ local function test_buf()
 	print( buf.crc ) 
 	print( buf.b64 ) 
 	print( buf.hex )
-	print( buf.r(3) )
-	print( buf.r(3, socklib.FMT.STR ) )
-	print( buf.r(3, socklib.FMT.HEX ) )
-	print( buf.r(3, socklib.FMT.B64 ) )
-	print( buf.r(3, socklib.FMT.BIN ) )
-	print( buf.r(3, socklib.FMT.BBUF ) )
+	print( buf:r(3) )
+	print( buf:r(3, socklib.FMT.STR ) )
+	print( buf:r(3, socklib.FMT.HEX ) )
+	print( buf:r(3, socklib.FMT.B64 ) )
+	print( buf:r(3, socklib.FMT.BIN ) )
+	print( buf:r(3, socklib.FMT.BUF ) )
+
+	buf = socklib.buf():w("12345")
+	print( buf:sub():ps() )
+	print( buf:sub(1):ps() )
+	print( buf:sub(1, -1):ps() )
+	print( buf:sub(1, -2):ps() )
+	print( buf:sub(1, -2, socklib.FMT.STR) )
+	print( buf:sub(1, -2, socklib.FMT.B64) )
+	print( util.b64dec(buf:sub(1, -2, socklib.FMT.B64)) )
 
 	local tcp = socklib.tcp();
-	local sbf = tcp:sendBuf();
+	local sbf = tcp.outBuf;
 	print( sbf:ws("tcp_data") )
 	print( sbf:ps() )
 	print( sbf:discard(2) )
@@ -278,12 +290,13 @@ local function test_socklib_nocase()
 	print( socklib.evt.CONNECT )
 end
 
+
 --collectgarbage("collect")
 
 test_socklib_info()
 test_socklib_nocase()
 
---test_util_ipprobe()
+test_util_ipprobe()
 
 --test_util_timer()
 
@@ -295,7 +308,7 @@ test_socklib_nocase()
 --test_util_u32op()
 --test_util_other()
 
---test_buf()
+test_buf()
 --test_tcpserver()
 --test_tcpclient()
 --test_udpserver()
