@@ -55,7 +55,7 @@ int main(int argc, const char * argv[])
 	
 	string s;
 	
-	while (getline(cin,s)) {
+	while (getline(cin, s)) {
 		bool err = luaL_loadbuffer(L, s.c_str(), s.length(), 0) || lua_pcall(L, 0, 0, 0);
 		if (err) {
 			cerr << lua_tostring(L, -1);

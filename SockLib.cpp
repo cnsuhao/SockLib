@@ -134,7 +134,7 @@ void SockLib::modify(SockPtr ref, int event)
 
 //----------------------------------------------------------------------------
 //
-void SockLib::remove(SockPtr ref)
+void SockLib::remove(const SockPtr ref)
 {
 	_clos[ref] = 1;
 	_news.erase(ref);
@@ -143,7 +143,7 @@ void SockLib::remove(SockPtr ref)
 
 //----------------------------------------------------------------------------
 //
-bool SockLib::found(SockPtr ref)
+bool SockLib::found(const SockPtr ref)
 {
 	return _refs.find(ref) != _refs.end();
 }
@@ -191,7 +191,7 @@ void SockLib::poll(u32_t usec)
 	
 	beforePoll();
 	
-	if (_refs.empty()) {
+	if (_refs.empty() && usec > 0) {
 #ifdef _WIN32
 		Sleep(1);
 #else
@@ -437,7 +437,16 @@ static const luaL_Reg SockUtil_Reg[] = {
 	{ "b64dec", 	Util::mylua_b64dec },
 	#endif // SOCKLIB_ALG
 
-	{ "u32op", 		Util::mylua_u32op },
+	{ "u32op", 			Util::mylua_u32op },
+	// for performance
+	{ "u32_inv", 		Util::mylua_u32_inv },
+	{ "u32_and", 		Util::mylua_u32_and },
+	{ "u32_or", 		Util::mylua_u32_or },
+	{ "u32_and_inv", 	Util::mylua_u32_and_inv },
+	{ "u32_or_inv", 	Util::mylua_u32_or_inv },
+	{ "u32_lshift", 	Util::mylua_u32_lshift },
+	{ "u32_rshift", 	Util::mylua_u32_rshift },
+	
 	{ "tick",		Util::mylua_tick },
 	{ "urlenc",		Util::mylua_urlenc },
 	{ "urldec",		Util::mylua_urldec },
@@ -578,23 +587,23 @@ int LuaHelper::mylua_index(lua_State* L)
 //
 static int mylua_return_fmt(lua_State* L, const char* fmt, const void* ptr, u32_t len)
 {
-	if (fmt && 0 == StrCmpI(fmt, SOCKFMT_BUF)) {
+	if (fmt && 0 == StrCmpI(fmt, "*" SOCKFMT_BUF)) {
 		SockBuf* buf = new SockBuf();
 		buf->w(ptr, len);
 		return LuaHelper::bind<SockBuf>(L, SOCKLIB_BUF, buf);
-	} else if (fmt && 0 == StrCmpI(fmt, SOCKFMT_HEX)) {
+	} else if (fmt && 0 == StrCmpI(fmt, "*" SOCKFMT_HEX)) {
 		char* hex = new char[len * 2 + 2];
 		for (u32_t i = 0; i < len; ++i)
 			sprintf(hex + 2 * i, "%02X", ((u8_t*)ptr)[i]);
 		lua_pushstring(L, hex);
 		delete[] hex;
 		return 1;
-	} else if (fmt && 0 == StrCmpI(fmt, SOCKFMT_BIN)) {
+	} else if (fmt && 0 == StrCmpI(fmt, "*" SOCKFMT_BIN)) {
 		lua_pushlightuserdata(L, (void*)ptr);
 		lua_pushinteger(L, len);
 		return 2;
 #if SOCKLIB_ALG
-	} else if (fmt && 0 == StrCmpI(fmt, SOCKFMT_B64)) {
+	} else if (fmt && 0 == StrCmpI(fmt, "*" SOCKFMT_B64)) {
 		std::string b64 = Base64_encode(ptr, len);
 		lua_pushstring(L, b64.c_str());
 		return 1;
@@ -811,7 +820,7 @@ int SockLib::luaRegLib(lua_State* L, const char* libName)
 		SOCKFMT_B64
 	};
 	for (int i = 0; i < sizeof(fmts)/sizeof(fmts[0]); ++i) {
-		lua_pushstring(L, fmts[i]);
+		lua_pushstring(L, (std::string("*") + fmts[i]).c_str());
 		lua_setfield(L, -2, fmts[i]);
 	}
 	lua_setfield(L, -2, "FMT");
@@ -849,7 +858,7 @@ int SockLib::mylua_poll(lua_State* L)
 	if (lua_gettop(L) > 0 && lua_isnumber(L, 1)) {
 		poll((u32_t)lua_tointeger(L, 1));
 	} else {
-		poll();
+		poll(0);
 	}
 	return 0;
 }
@@ -2762,7 +2771,7 @@ int SockBuf::mylua_sub(lua_State* L)
 	if (end < 0) end = _le + end + 1;
 	if (end > _le) end = _le;
 	
-	const char* fmt = SOCKFMT_BUF;
+	const char* fmt = "*" SOCKFMT_BUF;
 	if (lua_gettop(L) >= 4)
 		fmt = lua_tostring(L, 4);
 	
@@ -3404,7 +3413,7 @@ int MD5::mylua_final(lua_State* L)
 	u8_t hash[16];
 	_this->final(hash);
 	
-	const char* fmt = SOCKFMT_HEX;
+	const char* fmt = "*" SOCKFMT_HEX;
 	if (lua_gettop(L) >= 2)
 		fmt = luaL_checkstring(L, 2);
 	
@@ -3630,7 +3639,7 @@ int SHA1::mylua_final(lua_State* L)
 	u8_t hash[20];
 	_this->final(hash);
 	
-	const char* fmt = SOCKFMT_HEX;
+	const char* fmt = "*" SOCKFMT_HEX;
 	if (lua_gettop(L) >= 2)
 		fmt = luaL_checkstring(L, 2);
 	
@@ -4178,10 +4187,10 @@ bool Util::_onTimerCallback(Timer& tmr)
 // u32_t opteration, @return a u32_t
 //
 // 2 args:
-// 	socklib.u32op("~", a) socklib.u32op("!", a)
+// 	socklib.util.u32op("~", a) socklib.util.u32op("!", a)
 //
 // 3 args:
-// 	socklib.u32op(a, "&", b) socklib.u32op(a, "<<", b)
+// 	socklib.util.u32op(a, "&", b) socklib.util.u32op(a, "<<", b)
 //
 int Util::mylua_u32op(lua_State* L)
 {
@@ -4208,8 +4217,26 @@ int Util::mylua_u32op(lua_State* L)
 		
 		if (0 == strcmp(s, "&")) {
 			r = a & b;
+		} else if (0 == strcmp(s, "|")) {
+			r = a | b;
+		} else if (0 == strcmp(s, "<<")) {
+			r = a << b;
+		} else if (0 == strcmp(s, ">>")) {
+			r = a >> b;
+		} else if (0 == strcmp(s, "^")) {
+			r = a ^ b;
 		} else if (0 == strcmp(s, "&~") || 0 == strcmp(s, "& ~")) {
 			r = (a & (~b));
+		} else if (0 == strcmp(s, "|~") || 0 == strcmp(s, "| ~")) {
+			r = (a | (~b));
+		} else if (0 == strcmp(s, "&&")) {
+			lua_pushboolean(L, a && b);
+			return 1;
+		} else if (0 == strcmp(s, "||")) {
+			lua_pushboolean(L, a || b);
+			return 1;
+// no useful
+#if 0
 		} else if (0 == strcmp(s, "&!") || 0 == strcmp(s, "& !")) {
 			r = (a & (!b));
 		} else if (0 == strcmp(s, "&=")) {
@@ -4218,10 +4245,6 @@ int Util::mylua_u32op(lua_State* L)
 			r = (a &= (~b));
 		} else if (0 == strcmp(s, "&=!") || 0 == strcmp(s, "&= !")) {
 			r = (a &= (!b));
-		} else if (0 == strcmp(s, "|")) {
-			r = a | b;
-		} else if (0 == strcmp(s, "|~") || 0 == strcmp(s, "| ~")) {
-			r = (a | (~b));
 		} else if (0 == strcmp(s, "|!") || 0 == strcmp(s, "| !")) {
 			r = (a | (!b));
 		} else if (0 == strcmp(s, "|=")) {
@@ -4230,24 +4253,13 @@ int Util::mylua_u32op(lua_State* L)
 			r = (a |= (~b));
 		} else if (0 == strcmp(s, "|=!") || 0 == strcmp(s, "|= !")) {
 			r = (a |= (!b));
-		} else if (0 == strcmp(s, "^")) {
-			r = a ^ b;
 		} else if (0 == strcmp(s, "^=")) {
 			r = (a ^= b);
 		} else if (0 == strcmp(s, "^=~") || 0 == strcmp(s, "^= ~")) {
 			r = (a ^= (~b));
 		} else if (0 == strcmp(s, "^=!") || 0 == strcmp(s, "^= !")) {
 			r = (a ^= (!b));
-		} else if (0 == strcmp(s, ">>")) {
-			r = a >> b;
-		} else if (0 == strcmp(s, "<<")) {
-			r = a << b;
-		} else if (0 == strcmp(s, "&&")) {
-			lua_pushboolean(L, a && b);
-			return 1;
-		} else if (0 == strcmp(s, "||")) {
-			lua_pushboolean(L, a || b);
-			return 1;
+#endif
 		} else {
 			luaL_error(L, "%s.u32op(num1, opt, num2) unsupported opt=\"%s\"", SOCKLIB_UTIL.c_str(), s);
 		}
@@ -4260,6 +4272,81 @@ int Util::mylua_u32op(lua_State* L)
 	
 	return 1;
 }
+
+// for performance
+int Util::mylua_u32_inv(lua_State* L)
+{
+	u32_t a = (u32_t)lua_tointeger(L, 1);
+	lua_pushinteger(L, ~a);
+	return 1;
+}
+
+int Util::mylua_u32_and(lua_State* L)
+{
+	u32_t a = (u32_t)lua_tointeger(L, 1);
+	u32_t b = (u32_t)lua_tointeger(L, 2);
+	
+	u32_t r = (a & b);
+	
+	lua_pushinteger(L, r);
+	return 1;
+}
+
+int Util::mylua_u32_or(lua_State* L)
+{
+	u32_t a = (u32_t)lua_tointeger(L, 1);
+	u32_t b = (u32_t)lua_tointeger(L, 2);
+	
+	u32_t r = (a | b);
+	
+	lua_pushinteger(L, r);
+	return 1;
+}
+
+int Util::mylua_u32_and_inv(lua_State* L)
+{
+	u32_t a = (u32_t)lua_tointeger(L, 1);
+	u32_t b = (u32_t)lua_tointeger(L, 2);
+	
+	u32_t r = (a & ~b);
+	
+	lua_pushinteger(L, r);
+	return 1;
+}
+
+int Util::mylua_u32_or_inv(lua_State* L)
+{
+	u32_t a = (u32_t)lua_tointeger(L, 1);
+	u32_t b = (u32_t)lua_tointeger(L, 2);
+	
+	u32_t r = (a | ~b);
+	
+	lua_pushinteger(L, r);
+	return 1;
+}
+
+int Util::mylua_u32_lshift(lua_State* L)
+{
+	u32_t a = (u32_t)lua_tointeger(L, 1);
+	u32_t b = (u32_t)lua_tointeger(L, 2);
+	
+	u32_t r = (a << b);
+	
+	lua_pushinteger(L, r);
+	return 1;
+}
+
+int Util::mylua_u32_rshift(lua_State* L)
+{
+	u32_t a = (u32_t)lua_tointeger(L, 1);
+	u32_t b = (u32_t)lua_tointeger(L, 2);
+	
+	u32_t r = (a >> b);
+	
+	lua_pushinteger(L, r);
+	return 1;
+}
+
 
 int Util::mylua_tick(lua_State* L)
 {

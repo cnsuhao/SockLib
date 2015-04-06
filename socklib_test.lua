@@ -78,13 +78,22 @@ end
 
 local function test_util_u32op()
 	-- 2 args = socklib.util.u32op("opt_str", num)
-	print( util.u32op("!", 123) )
-	print( util.u32op("~", 123) )
+	print( util.u32op("!", 123) )		-- !123
+	print( util.u32op("~", 123) )		-- ~123
 
 	-- 3 args = socklib.util.u32op(num1, "opt_str", num2)
-	print( util.u32op(123, "<<", 2) )
-	print( util.u32op(123, "&", 2) )
-	print( util.u32op(123, "|= ~", 2) )
+	print( util.u32op(123, "<<", 2) )	-- 123 << 2
+	print( util.u32op(123, "&", 2) )	-- 123 & 2
+	print( util.u32op(123, "|~", 2) )	-- 123 | ~2
+	
+	-- for performance
+	print( util.u32_inv(123) )			-- ~ 123
+	print( util.u32_and(123, 2) )		-- 123 & 2
+	print( util.u32_or(123, 2) )		-- 123 | 2
+	print( util.u32_and_inv(123, 2) )	-- 123 & ~2
+	print( util.u32_or_inv(123, 2) )	-- 123 | ~2
+	print( util.u32_lshift(123, 2) )	-- 123 << 2
+	print( util.u32_rshift(123, 2) )	-- 123 >> 2
 end
 
 -- tmrId = socklib.util.setTimer(delay_msec, function(id, curloops, maxloops) end, max_loops = -1)
@@ -306,7 +315,7 @@ test_util_ipprobe()
 --test_util_crc32()
 --test_util_base64()
 --test_util_u32op()
---test_util_other()
+test_util_other()
 
 test_buf()
 --test_tcpserver()

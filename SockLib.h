@@ -123,18 +123,18 @@ typedef long long 			i64_t;
 class LuaHelper
 {
 public:
-	typedef const void Object;
-	typedef std::map<Object*, int> Objects;
+	typedef const void* ObjPtr;
+	typedef std::map<ObjPtr, int> Objects;
 	
-	static void add(Object* obj) {
+	static void add(ObjPtr obj) {
 		_objs[obj] = 1;
 	}
 	
-	static void remove(Object* obj) {
+	static void remove(ObjPtr obj) {
 		_objs.erase(obj);
 	}
 	
-	static bool found(Object* obj) {
+	static bool found(ObjPtr obj) {
 		return _objs.find(obj) != _objs.end();
 	}
 	
@@ -294,7 +294,7 @@ public:
 		STA_ACCEPTED,
 	};
 	
-	typedef std::map<SockPtr,  int> SockMap;
+	typedef std::map<const SockPtr,  int> SockMap;
 	
 	static bool init();
 	static void cleanup();
@@ -329,8 +329,8 @@ public:
 	
 	static void add(SockPtr ref, int event);
 	static void modify(SockPtr ref, int event);
-	static void remove(SockPtr ref);
-	static bool found(SockPtr ref);
+	static void remove(const SockPtr ref);
+	static bool found(const SockPtr ref);
 	
 	static void poll(u32_t usec = 10);
 
@@ -1308,6 +1308,14 @@ public:
 	#endif // SOCKLIB_ALG
 
 	static int mylua_u32op(lua_State* L);
+	// for performance
+	static int mylua_u32_inv(lua_State* L);
+	static int mylua_u32_and(lua_State* L);
+	static int mylua_u32_or(lua_State* L);
+	static int mylua_u32_and_inv(lua_State* L);
+	static int mylua_u32_or_inv(lua_State* L);
+	static int mylua_u32_lshift(lua_State* L);
+	static int mylua_u32_rshift(lua_State* L);
 
 	static int mylua_tick(lua_State* L);
 
